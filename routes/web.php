@@ -35,6 +35,7 @@ Route::get('/qr/{token}', function (string $token) {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');
     Route::livewire('visitors', 'pages::visitors')->name('visitors');
+    Route::livewire('visitor-logs', 'pages::visitor-logs')->name('visitor-logs');
     Route::livewire('users', 'pages::users')->name('users');
     Route::livewire('watchlist', 'pages::watchlist')->name('watchlist');
 });

@@ -20,6 +20,10 @@
                         {{ __('Visitors') }}
                     </flux:sidebar.item>
 
+                    <flux:sidebar.item icon="document-text" :href="route('visitor-logs')" :current="request()->routeIs('visitor-logs')" wire:navigate>
+                        {{ __('Visitor Log') }}
+                    </flux:sidebar.item>
+
                     <flux:sidebar.item icon="users" :href="route('users')" :current="request()->routeIs('users')" wire:navigate>
                         {{ __('Users') }}
                     </flux:sidebar.item>

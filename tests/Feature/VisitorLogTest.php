@@ -15,7 +15,7 @@ test('change status toggles visitor status', function () {
         'checked_in_at' => now(),
     ]);
 
-    Livewire::test('pages::visitors')
+    Livewire::test('pages::visitor-logs')
         ->call('changeStatus', $log->id);
 
     $log->refresh();
@@ -33,7 +33,7 @@ test('change status toggles back to checked in', function () {
         'checked_out_at' => now(),
     ]);
 
-    Livewire::test('pages::visitors')
+    Livewire::test('pages::visitor-logs')
         ->call('changeStatus', $log->id);
 
     $log->refresh();
@@ -50,7 +50,7 @@ test('status badge updates after change status', function () {
         'checked_in_at' => now(),
     ]);
 
-    Livewire::test('pages::visitors')
+    Livewire::test('pages::visitor-logs')
         ->assertSee('On-site')
         ->call('changeStatus', $log->id)
         ->assertSee('Checked Out');
@@ -66,7 +66,7 @@ test('delete visitor log soft-deletes the record', function () {
         'visitor_id' => $visitor->id,
     ]);
 
-    Livewire::test('pages::visitors')
+    Livewire::test('pages::visitor-logs')
         ->call('confirmDelete', $log->id)
         ->assertSet('showDeleteModal', true)
         ->call('deleteLog');
@@ -82,7 +82,7 @@ test('view visitor log opens the modal', function () {
         'visitor_id' => $visitor->id,
     ]);
 
-    Livewire::test('pages::visitors')
+    Livewire::test('pages::visitor-logs')
         ->call('viewLog', $log->id)
         ->assertSet('showViewModal', true)
         ->assertSee($visitor->name);

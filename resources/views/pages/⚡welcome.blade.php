@@ -737,23 +737,19 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                         destroy() { this.stopCamera(); }
                                     }">
                                         <div class="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-4 text-center dark:border-neutral-700 dark:bg-neutral-800/50">
-                                            <template x-if="!cameraActive && !photo">
-                                                <div>
-                                                    <svg class="mx-auto h-8 w-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                                                    <p class="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Take a photo of your ID card') }}</p>
-                                                    <flux:button variant="primary" size="sm" class="mt-2" x-on:click="startCamera()">{{ __('Capture ID Photo') }}</flux:button>
+                                            <div x-show="!cameraActive && !photo">
+                                                <svg class="mx-auto h-8 w-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                                <p class="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Take a photo of your ID card') }}</p>
+                                                <flux:button variant="primary" size="sm" class="mt-2" x-on:click="startCamera()">{{ __('Capture ID Photo') }}</flux:button>
+                                            </div>
+                                            <div x-show="cameraActive">
+                                                <video x-ref="idVideo" autoplay playsinline class="mx-auto max-h-48 rounded-lg"></video>
+                                                <div class="mt-3 flex gap-2 justify-center">
+                                                    <flux:button variant="primary" x-on:click="capture()" x-bind:disabled="!videoReady">{{ __('Capture') }}</flux:button>
+                                                    <flux:button variant="ghost" x-on:click="stopCamera()">{{ __('Cancel') }}</flux:button>
                                                 </div>
-                                            </template>
-                                            <template x-if="cameraActive">
-                                                <div>
-                                                    <video x-ref="idVideo" autoplay playsinline class="mx-auto max-h-48 rounded-lg"></video>
-                                                    <div class="mt-3 flex gap-2 justify-center">
-                                                        <flux:button variant="primary" x-on:click="capture()" :disabled="!videoReady">{{ __('Capture') }}</flux:button>
-                                                        <flux:button variant="ghost" x-on:click="stopCamera()">{{ __('Cancel') }}</flux:button>
-                                                    </div>
-                                                </div>
-                                            </template>
-                                            <template x-if="photo">
+                                            </div>
+                                            <div x-show="photo">
                                                 <div class="flex items-center gap-3 justify-center">
                                                     <img :src="photo" alt="ID photo" class="h-16 w-16 rounded-lg object-cover border border-neutral-300">
                                                     <div class="text-left">
@@ -761,7 +757,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                                         <button type="button" x-on:click="clearPhoto()" class="text-xs text-neutral-400 hover:text-neutral-600">{{ __('Remove') }}</button>
                                                     </div>
                                                 </div>
-                                            </template>
+                                            </div>
                                             <canvas x-ref="idCanvas" class="hidden"></canvas>
                                         </div>
                                     </div>
@@ -897,23 +893,19 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                     destroy() { this.stopCamera(); }
                                 }">
                                     <div class="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-4 text-center dark:border-neutral-700 dark:bg-neutral-800/50">
-                                        <template x-if="!cameraActive && !photo">
-                                            <div>
-                                                <svg class="mx-auto h-8 w-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                                                <p class="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Take a selfie for your badge') }}</p>
-                                                <flux:button variant="primary" size="sm" class="mt-2" x-on:click="startCamera()">{{ __('Open Camera') }}</flux:button>
+                                        <div x-show="!cameraActive && !photo">
+                                            <svg class="mx-auto h-8 w-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                            <p class="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Take a selfie for your badge') }}</p>
+                                            <flux:button variant="primary" size="sm" class="mt-2" x-on:click="startCamera()">{{ __('Open Camera') }}</flux:button>
+                                        </div>
+                                        <div x-show="cameraActive">
+                                            <video x-ref="visitVideo" autoplay playsinline class="mx-auto max-h-48 rounded-lg"></video>
+                                            <div class="mt-3 flex gap-2 justify-center">
+                                                <flux:button variant="primary" x-on:click="capture()" x-bind:disabled="!videoReady">{{ __('Capture') }}</flux:button>
+                                                <flux:button variant="ghost" x-on:click="stopCamera()">{{ __('Cancel') }}</flux:button>
                                             </div>
-                                        </template>
-                                        <template x-if="cameraActive">
-                                            <div>
-                                                <video x-ref="visitVideo" autoplay playsinline class="mx-auto max-h-48 rounded-lg"></video>
-                                                <div class="mt-3 flex gap-2 justify-center">
-                                                    <flux:button variant="primary" x-on:click="capture()" :disabled="!videoReady">{{ __('Capture') }}</flux:button>
-                                                    <flux:button variant="ghost" x-on:click="stopCamera()">{{ __('Cancel') }}</flux:button>
-                                                </div>
-                                            </div>
-                                        </template>
-                                        <template x-if="photo">
+                                        </div>
+                                        <div x-show="photo">
                                             <div class="flex items-center gap-3 justify-center">
                                                 <img :src="photo" alt="Selfie" class="h-14 w-14 rounded-full object-cover border-2 border-emerald-400">
                                                 <div class="text-left">
@@ -921,7 +913,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                                     <button type="button" x-on:click="clearPhoto()" class="text-xs text-neutral-400 hover:text-neutral-600">{{ __('Retake') }}</button>
                                                 </div>
                                             </div>
-                                        </template>
+                                        </div>
                                         <canvas x-ref="visitCanvas" class="hidden"></canvas>
                                     </div>
                                 </div>
