@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\User;
-use App\Models\Visitor;
+use App\Models\VisitorLog;
 use App\Notifications\VisitorCheckedOut;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -15,14 +15,14 @@ beforeEach(function () {
 
 test('host receives notification when visitor checks out from on-site list', function () {
     $host = User::factory()->create();
-    $visitor = Visitor::factory()->create([
+    $log = VisitorLog::factory()->create([
         'host_user_id' => $host->id,
         'status' => 'checked_in',
         'checked_in_at' => now()->subHours(2),
     ]);
 
     Livewire::test('pages::welcome')
-        ->call('confirmCheckOut', (string) $visitor->id)
+        ->call('confirmCheckOut', $log->id)
         ->call('executeCheckOut');
 
     Notification::assertSentTo($host, VisitorCheckedOut::class);
@@ -30,7 +30,7 @@ test('host receives notification when visitor checks out from on-site list', fun
 
 test('host receives notification when visitor checks out via QR code', function () {
     $host = User::factory()->create();
-    $visitor = Visitor::factory()->create([
+    VisitorLog::factory()->create([
         'host_user_id' => $host->id,
         'status' => 'checked_in',
         'checked_in_at' => now()->subHours(2),
@@ -45,21 +45,21 @@ test('host receives notification when visitor checks out via QR code', function 
 });
 
 test('no notification sent when visitor checks out without a host', function () {
-    $visitor = Visitor::factory()->create([
+    VisitorLog::factory()->create([
         'host_user_id' => null,
         'status' => 'checked_in',
         'checked_in_at' => now()->subHours(2),
     ]);
 
     Livewire::test('pages::welcome')
-        ->call('confirmCheckOut', (string) $visitor->id)
+        ->call('confirmCheckOut', VisitorLog::first()->id)
         ->call('executeCheckOut');
 
     Notification::assertNothingSent();
 });
 
 test('no notification sent when visitor without host checks out via QR', function () {
-    $visitor = Visitor::factory()->create([
+    VisitorLog::factory()->create([
         'host_user_id' => null,
         'status' => 'checked_in',
         'checked_in_at' => now()->subHours(2),
@@ -75,18 +75,18 @@ test('no notification sent when visitor without host checks out via QR', functio
 
 test('check-out notification contains correct visitor details', function () {
     $host = User::factory()->create();
-    $visitor = Visitor::factory()->create([
+    $log = VisitorLog::factory()->create([
         'host_user_id' => $host->id,
         'status' => 'checked_in',
         'checked_in_at' => now()->subHours(2),
     ]);
 
     Livewire::test('pages::welcome')
-        ->call('confirmCheckOut', (string) $visitor->id)
+        ->call('confirmCheckOut', $log->id)
         ->call('executeCheckOut');
 
-    Notification::assertSentTo($host, VisitorCheckedOut::class, function ($notification) use ($visitor) {
-        expect($notification->visitor->id)->toBe($visitor->id);
+    Notification::assertSentTo($host, VisitorCheckedOut::class, function ($notification) use ($log) {
+        expect($notification->visitorLog->visitor_id)->toBe($log->visitor_id);
 
         return true;
     });

@@ -39,7 +39,7 @@ test('admin can create a new user', function () {
         ->set('createPassword', 'password123')
         ->set('createPasswordConfirmation', 'password123')
         ->call('createUser')
-        ->assertDispatched('toast');
+        ->assertDispatched('toast-show');
 
     $this->assertDatabaseHas('users', [
         'name' => 'New User',
@@ -59,7 +59,7 @@ test('admin can edit a user', function () {
         ->assertSet('editEmail', $user->email)
         ->set('editName', 'Updated Name')
         ->call('updateUser')
-        ->assertDispatched('toast');
+        ->assertDispatched('toast-show');
 
     $this->assertDatabaseHas('users', [
         'id' => $user->id,
@@ -77,7 +77,7 @@ test('admin can delete a user', function () {
         ->call('confirmDelete', $user->id)
         ->assertSet('showDeleteModal', true)
         ->call('deleteUser')
-        ->assertDispatched('toast');
+        ->assertDispatched('toast-show');
 
     $this->assertDatabaseMissing('users', ['id' => $user->id]);
 });
@@ -89,7 +89,7 @@ test('admin cannot delete their own account', function () {
     Livewire::test('pages::users')
         ->call('confirmDelete', $admin->id)
         ->call('deleteUser')
-        ->assertDispatched('toast');
+        ->assertDispatched('toast-show');
 
     $this->assertDatabaseHas('users', ['id' => $admin->id]);
 });

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\PreRegistration;
 use App\Models\User;
 use App\Models\Visitor;
 use App\Models\VisitorLog;
@@ -26,6 +27,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     // Step 1: Search or create person
     public string $search = '';
     public ?string $selectedVisitorId = null;
+    public ?string $selectedPreRegistrationId = null;
     public bool $showCreateForm = false;
 
     // Step 1: New person fields (ID photo → visitors.photo)
@@ -160,7 +162,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                     'company' => 'nullable|string|max:255',
                     'validIdNumber' => 'nullable|string|max:50',
                 ]);
-            } elseif (! $this->selectedVisitorId) {
+            } elseif (! $this->selectedVisitorId && ! $this->selectedPreRegistrationId) {
                 Flux::toast(variant: 'warning', text: __('Please search and select a visitor, or register as a new person.'));
 
                 return;
@@ -191,6 +193,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     public function selectVisitor(string $id): void
     {
         $this->selectedVisitorId = $id;
+        $this->selectedPreRegistrationId = null;
         $this->showCreateForm = false;
         $this->search = '';
     }
@@ -199,6 +202,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     {
         $this->showCreateForm = true;
         $this->selectedVisitorId = null;
+        $this->selectedPreRegistrationId = null;
     }
 
     public function cancelCreating(): void
@@ -210,6 +214,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     public function changeVisitor(): void
     {
         $this->selectedVisitorId = null;
+        $this->selectedPreRegistrationId = null;
         $this->showCreateForm = false;
         $this->search = '';
     }
@@ -222,6 +227,72 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
         }
 
         return Visitor::find($this->selectedVisitorId);
+    }
+
+    // ── Pre-registration match ──
+
+    #[Computed]
+    public function preRegistrationMatches(): Collection
+    {
+        if ($this->search === '' || ! Schema::hasTable('pre_registrations')) {
+            return new Collection;
+        }
+
+        return PreRegistration::pending()
+            ->where(function ($q) {
+                $q->where('name', 'like', '%' . $this->search . '%')
+                    ->orWhere('email', 'like', '%' . $this->search . '%')
+                    ->orWhere('phone', 'like', '%' . $this->search . '%');
+            })
+            ->orderBy('created_at', 'desc')
+            ->limit(5)
+            ->get();
+    }
+
+    public function selectPreRegistration(string $id): void
+    {
+        $pre = PreRegistration::pending()->findOrFail($id);
+
+        $this->selectedPreRegistrationId = $id;
+        $this->selectedVisitorId = null;
+        $this->showCreateForm = false;
+        $this->search = '';
+
+        $this->name = $pre->name;
+        $this->email = $pre->email ?? '';
+        $this->phone = $pre->phone ?? '';
+        $this->company = $pre->company ?? '';
+        $this->host = $pre->host ?? '';
+        $this->hostUserId = $pre->host_user_id;
+        $this->hostSearch = $pre->host ?? '';
+        $this->purpose = $pre->purpose ?? '';
+    }
+
+    #[Computed]
+    public function selectedPreRegistration(): ?PreRegistration
+    {
+        if ($this->selectedPreRegistrationId === null) {
+            return null;
+        }
+
+        return PreRegistration::find($this->selectedPreRegistrationId);
+    }
+
+    public function changePreRegistration(): void
+    {
+        $this->selectedPreRegistrationId = null;
+        $this->selectedVisitorId = null;
+        $this->showCreateForm = false;
+        $this->search = '';
+
+        $this->name = '';
+        $this->email = '';
+        $this->phone = '';
+        $this->company = '';
+        $this->host = '';
+        $this->hostUserId = null;
+        $this->hostSearch = '';
+        $this->purpose = '';
     }
 
     // ── Host ──
@@ -424,13 +495,17 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
             User::chunk(100, fn ($users) => $users->each->notify(new VisitorFlagged($visitorLog)));
         }
 
+        if ($this->selectedPreRegistrationId) {
+            PreRegistration::whereKey($this->selectedPreRegistrationId)->update(['status' => 'used']);
+        }
+
         Flux::toast(variant: 'success', text: __('Welcome, :name! Badge: :badge', ['name' => $visitor->name, 'badge' => $badgeNumber]));
     }
 
     public function resetForm(): void
     {
         $this->reset(
-            'step', 'search', 'selectedVisitorId', 'showCreateForm',
+            'step', 'search', 'selectedVisitorId', 'selectedPreRegistrationId', 'showCreateForm',
             'name', 'email', 'phone', 'company', 'validIdNumber', 'photo',
             'hostSearch', 'host', 'hostUserId', 'useCustomHost', 'purpose', 'visitPhoto',
             'justCheckedIn', 'lastLog'
@@ -663,7 +738,36 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                     <div class="mt-6">
                         {{-- Step 1: Search or Create Person --}}
                         @if ($this->step === 1)
-                            @if ($this->selectedVisitor)
+                            @if ($this->selectedPreRegistration)
+                                {{-- Pre-registration selected – confirm --}}
+                                <p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">{{ __('We found your pre-registration. Is this you?') }}</p>
+                                <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-900/20">
+                                    <div class="flex items-center gap-4">
+                                        <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-lg font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                                            {{ substr($this->selectedPreRegistration->name, 0, 2) }}
+                                        </div>
+                                        <div class="min-w-0">
+                                            <p class="font-semibold text-neutral-900 dark:text-white">{{ $this->selectedPreRegistration->name }}</p>
+                                            @if ($this->selectedPreRegistration->company)
+                                                <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $this->selectedPreRegistration->company }}</p>
+                                            @endif
+                                            <p class="text-xs text-neutral-400 dark:text-neutral-500">
+                                                {{ $this->selectedPreRegistration->host ? __('Visiting: ') . $this->selectedPreRegistration->host : '' }}
+                                                {{ $this->selectedPreRegistration->purpose ? ' · ' . $this->selectedPreRegistration->purpose : '' }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-4 flex gap-2">
+                                    <flux:button variant="primary" icon:trailing="arrow-up-right" wire:click="nextStep">
+                                        {{ __('Yes, its me') }}
+                                    </flux:button>
+                                    <flux:button variant="ghost" class="!py-3" wire:click="changePreRegistration">
+                                        {{ __('Not me') }}
+                                    </flux:button>
+                                </div>
+
+                            @elseif ($this->selectedVisitor)
                                 {{-- Person selected – confirm --}}
                                 <p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Is this you?') }}</p>
                                 <div class="rounded-lg border border-neutral-100 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-800/50">
@@ -810,6 +914,26 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                         </div>
                                     @elseif ($this->search !== '' && $this->searchResults->isEmpty())
                                         <p class="text-sm text-neutral-400 dark:text-neutral-500 text-center py-2">{{ __('No matches found.') }}</p>
+                                    @endif
+
+                                    @if ($this->search !== '' && $this->preRegistrationMatches->isNotEmpty())
+                                        <p class="mt-3 text-xs font-medium uppercase tracking-wide text-emerald-600 dark:text-emerald-400">{{ __('Pre-registered visit') }}</p>
+                                        <div class="mt-1 max-h-48 overflow-y-auto rounded-lg border border-emerald-200 dark:border-emerald-700">
+                                            @foreach ($this->preRegistrationMatches as $pre)
+                                                <button type="button" wire:click="selectPreRegistration('{{ $pre->id }}')" class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-emerald-50 dark:hover:bg-emerald-900/20 border-b border-emerald-100 dark:border-emerald-800 last:border-0" wire:key="{{ $pre->id }}">
+                                                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                                                        {{ substr($pre->name, 0, 2) }}
+                                                    </div>
+                                                    <div class="min-w-0 flex-1">
+                                                        <p class="truncate font-medium text-neutral-900 dark:text-white">{{ $pre->name }}</p>
+                                                        <p class="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                                                            {{ $pre->host ? __('Visiting: ') . $pre->host : '' }}{{ $pre->purpose ? ' · ' . $pre->purpose : '' }}
+                                                        </p>
+                                                    </div>
+                                                    <flux:button size="sm" variant="outline">{{ __('Select') }}</flux:button>
+                                                </button>
+                                            @endforeach
+                                        </div>
                                     @endif
 
                                     <div class="relative">

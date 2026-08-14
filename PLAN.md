@@ -145,7 +145,7 @@ Visitor Management System (VMS) built on Laravel 13 + Livewire 4 SFC + Flux UI v
 | &nbsp;&nbsp;— Sidebar navigation link (flag icon) | Low | ✅ |
 | &nbsp;&nbsp;— Pest tests (8 tests) | Low | ✅ |
 | Multi-tenant / multi-location support | Low | 🔲 |
-| Pre-registration (visitor books visit ahead, kiosk detects match) | Low | 🔲 |
+| Pre-registration (visitor books visit ahead, kiosk detects match) | Low | ✅ |
 | Vehicle plate capture on check-in | Low | 🔲 |
 
 ---
