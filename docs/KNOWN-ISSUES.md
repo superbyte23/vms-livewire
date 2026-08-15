@@ -41,6 +41,14 @@ Tracking list of open problems to address. Add new items at the top of their sec
 - **Resolution (root cause was Windows-side):** how Windows reaches WSL. `[wsl2] networkingMode=mirrored` in `.wslconfig` makes WSL share the host's LAN IP, and inbound TCP **8001 + 5173** firewall rules were added on the Windows host (admin). The app itself needed only minor config: `composer dev` pins `--port=8001`; `APP_URL=http://192.168.1.13:8001` and `VITE_HOST` in `.env` make Vite advertise the LAN IP so phones load CSS/JS from `http://<lan-ip>:5173` instead of `localhost`. The app is now reachable from other devices at `http://192.168.1.13:8001`. Reclaiming 8000 requires stopping `iphlpsvc` as Windows admin (optional).
 - **Note:** `VITE_HOST` must match the machine's current LAN IP — update `.env` if it changes (WSL2 mirrored networking shares the Windows host IP).
 
+### 4b. Camera blocked from other devices (secure-context rule)
+- **Where:** browser rule — `getUserMedia` only works on `localhost` or `https://`; plain `http://<ip>` never allows it.
+- **Resolution (in place):** HTTPS via mkcert + Caddy proxy `https://192.168.1.13:8443` → `127.0.0.1:8001`; `bootstrap/app.php` trusts the proxy; built assets served same-origin (no `public/hot`). Full walkthrough in `docs/MOBILE-ACCESS.md`.
+- **Still required (per new device):** install the mkcert root CA on the phone, and the Windows host still needs an inbound firewall rule for **TCP 8443** (admin):
+  ```
+  netsh advfirewall firewall add rule name="VMS WSL 8443" dir=in action=allow protocol=TCP localport=8443 profile=private,domain
+  ```
+
 ### 5. Vite bundle chunk-size warning
 - **Where:** `resources/js/app.js` (vendored `html5-qrcode` → ~558 KB bundle)
 - **Problem:** `npm run build` prints a chunk-size warning. Harmless, but adds load time.

@@ -52,6 +52,7 @@ test('pre-registration requires a name', function () {
 test('pre-registration without host sends no notification', function () {
     Livewire::test('pages::pre-register')
         ->set('name', 'Jane Doe')
+        ->set('phone', '555-0123')
         ->set('purpose', 'Delivery')
         ->call('submit');
 
@@ -136,6 +137,7 @@ test('kiosk check-in with pre-registration still notifies the host of check-in',
 test('pre-registration generates a permanent qr token', function () {
     Livewire::test('pages::pre-register')
         ->set('name', 'QR Visitor')
+        ->set('phone', '555-0123')
         ->set('purpose', 'Tour')
         ->call('submit');
 
@@ -220,6 +222,7 @@ test('pre-registration stores a valid id photo', function () {
 
     Livewire::test('pages::pre-register')
         ->set('name', 'ID Photo Visitor')
+        ->set('phone', '555-0123')
         ->set('validIdPhoto', $idPhoto)
         ->call('submit');
 
@@ -231,6 +234,7 @@ test('pre-registration stores a valid id photo', function () {
 test('pre-registration without valid id photo stores null', function () {
     Livewire::test('pages::pre-register')
         ->set('name', 'No Photo Visitor')
+        ->set('phone', '555-0123')
         ->call('submit');
 
     $pre = PreRegistration::where('name', 'No Photo Visitor')->first();
@@ -241,6 +245,7 @@ test('pre-registration without valid id photo stores null', function () {
 test('submitting a pre-registration redirects to the completion page', function () {
     Livewire::test('pages::pre-register')
         ->set('name', 'Redirect Person')
+        ->set('phone', '555-0123')
         ->set('purpose', 'Tour')
         ->call('submit')
         ->assertRedirect();

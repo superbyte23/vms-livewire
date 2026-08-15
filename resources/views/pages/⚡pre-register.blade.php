@@ -20,7 +20,7 @@ new #[Title('Pre-Register Your Visit')] #[Layout('layouts::kiosk')] class extend
         $this->validate([
             'name' => 'required|string|max:255',
             'email' => 'nullable|email|max:255',
-            'phone' => 'nullable|string|max:20',
+            'phone' => 'required|string|max:20',
             'company' => 'nullable|string|max:255',
             'validIdPhoto' => 'nullable|string',
             'purpose' => 'nullable|string|max:255',
@@ -59,7 +59,7 @@ new #[Title('Pre-Register Your Visit')] #[Layout('layouts::kiosk')] class extend
                 <flux:input wire:model="name" label="{{ __('Full Name') }}" type="text" required placeholder="{{ __('e.g. John Doe') }}" />
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                     <flux:input wire:model="email" label="{{ __('Email') }}" type="email" placeholder="{{ __('e.g. john@example.com') }}" />
-                    <flux:input wire:model="phone" label="{{ __('Phone') }}" type="tel" placeholder="{{ __('e.g. +1 555-1234') }}" />
+                    <flux:input wire:model="phone" label="{{ __('Phone or Mobile') }}" type="tel" required placeholder="{{ __('e.g. +1 555-1234') }}" />
                 </div>
                 <flux:input wire:model="company" label="{{ __('Company') }}" placeholder="{{ __('e.g. Acme Corp') }}" />
 

@@ -18,3 +18,11 @@ Chart.register(
 
 window.Chart = Chart;
 window.Html5Qrcode = Html5Qrcode;
+
+window.focusFirstError = function () {
+    const el = document.querySelector('[data-invalid], [aria-invalid="true"]');
+    if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        el.focus({ preventScroll: true });
+    }
+};

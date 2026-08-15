@@ -8,6 +8,26 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+[x-cloak] {
+    display: none !important;
+}
+
+/* Prevent text-selection caret / keyboard on tappable chrome (mobile) */
+@layer base {
+    :where(button, [role='button'], a, label, summary, [x-show], [x-cloak], [x-data]) {
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    :where(input, textarea, select, [contenteditable='true']) {
+        -webkit-tap-highlight-color: transparent;
+        -webkit-user-select: text;
+        user-select: text;
+    }
+}
+
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 
@@ -71,6 +91,10 @@ input:focus[data-flux-control],
 textarea:focus[data-flux-control],
 select:focus[data-flux-control] {
     @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
+}
+
+[data-flux-control] {
+    scroll-margin-top: 0.75rem;
 }
 
 /* \[:where(&)\]:size-4 {

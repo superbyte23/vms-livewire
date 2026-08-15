@@ -181,7 +181,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                 $this->validate([
                     'name' => 'required|string|max:255',
                     'email' => 'nullable|email|max:255',
-                    'phone' => 'nullable|string|max:20',
+                    'phone' => 'required|string|max:20',
                     'validIdNumber' => 'nullable|string|max:50',
                 ]);
             } elseif (! $this->selectedVisitorId && ! $this->selectedPreRegistrationId) {
@@ -225,6 +225,18 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
         $this->showCreateForm = true;
         $this->selectedVisitorId = null;
         $this->selectedPreRegistrationId = null;
+        $this->search = '';
+        $this->name = '';
+        $this->email = '';
+        $this->phone = '';
+        $this->company = '';
+        $this->validIdNumber = '';
+        $this->photo = '';
+        $this->idCardImage = null;
+        $this->idCardPreview = '';
+        $this->idOcrText = '';
+        $this->showIdScanModal = false;
+        $this->processingIdCard = false;
     }
 
     public function cancelCreating(): void
@@ -317,6 +329,23 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
         Flux::toast(variant: 'success', text: __('Pre-registration found. Please confirm your details.'));
     }
 
+    public function selectVisitorByQrToken(string $token): void
+    {
+        $visitor = Visitor::where('qr_code_token', $token)->first();
+
+        $this->showPreQrScanner = false;
+
+        if (! $visitor) {
+            Flux::toast(variant: 'error', text: __('Invalid or unknown badge QR code.'));
+
+            return;
+        }
+
+        $this->activeTab = 'checkin';
+        $this->selectVisitor((string) $visitor->id);
+        Flux::toast(variant: 'success', text: __('Visitor found. Please confirm your details.'));
+    }
+
     public function changePreRegistration(): void
     {
         $this->selectedPreRegistrationId = null;
@@ -394,11 +423,13 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
 
         $this->processingIdCard = true;
 
-        try {
-            $imagePath = $this->idCardImage->getRealPath();
+        $originalPath = $this->idCardImage->getRealPath();
+        $imagePath = $this->preprocessIdCardImage($originalPath);
 
+        try {
             $ocr = new TesseractOCR($imagePath);
             $ocr->lang('eng');
+            $ocr->psm(6);
             $this->idOcrText = $ocr->run();
 
             $this->parseIdCardText($this->idOcrText);
@@ -407,8 +438,45 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
         } catch (\Throwable $e) {
             Flux::toast(variant: 'danger', text: __('Failed to process ID card: ') . $e->getMessage());
         } finally {
+            if ($imagePath !== $originalPath) {
+                @unlink($imagePath);
+            }
             $this->processingIdCard = false;
         }
+    }
+
+    protected function preprocessIdCardImage(string $path): string
+    {
+        $source = @imagecreatefromstring((string) file_get_contents($path));
+
+        if (! $source) {
+            return $path;
+        }
+
+        $srcW = imagesx($source);
+        $srcH = imagesy($source);
+
+        $maxDim = 1600;
+        $scale = min(2, max(1, $maxDim / max($srcW, $srcH)));
+
+        $dstW = max(1, (int) round($srcW * $scale));
+        $dstH = max(1, (int) round($srcH * $scale));
+
+        $dst = imagecreatetruecolor($dstW, $dstH);
+        imagecopyresampled($dst, $source, 0, 0, 0, 0, $dstW, $dstH, $srcW, $srcH);
+
+        imagefilter($dst, IMG_FILTER_GRAYSCALE);
+        imagefilter($dst, IMG_FILTER_CONTRAST, -25);
+
+        imageconvolution($dst, [[0, -1, 0], [-1, 5, -1], [0, -1, 0]], 1, 0);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'idcard_').'.png';
+        imagepng($dst, $tmp);
+
+        imagedestroy($source);
+        imagedestroy($dst);
+
+        return $tmp;
     }
 
     protected function parseIdCardText(string $text): void
@@ -420,7 +488,11 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
 
         if ($this->name === '') {
             if (preg_match('/\b([A-Z]{2,}),\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b/', $fullText, $matches)) {
-                $this->name = $matches[2] . ' ' . $matches[1];
+                $this->name = $matches[2].' '.$matches[1];
+            } elseif (preg_match('/\b([A-Z]{2,})\s*,\s*([A-Z][A-Z.\s]+)\b/', $fullText, $matches)) {
+                $this->name = ucwords(strtolower($matches[2].' '.$matches[1]));
+            } elseif (preg_match('/(?:\bName\b|NMN|NLN)[\s:.]*([A-Z][a-zA-Z\s.\'-]+)/', $fullText, $matches)) {
+                $this->name = trim($matches[1]);
             } elseif (preg_match('/\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b/', $fullText, $matches)) {
                 $this->name = $matches[1];
             }
@@ -431,10 +503,8 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
         }
 
         if ($this->phone === '' && preg_match('/(\+?1[\s.-]?)?\(?([0-9]{3})\)?[\s.-]?([0-9]{3})[\s.-]?([0-9]{4})/', $fullText, $matches)) {
-            $this->phone = $matches[0];
-        }
-
-        if (preg_match('/\b(0[1-9]|1[0-2])[\/\-\.](0[1-9]|[12][0-9]|3[01])[\/\-\.](19|20)\d{2}\b/', $fullText, $matches)) {
+            $phone = preg_replace('/[^0-9+]/', '', $matches[0]);
+            $this->phone = strlen($phone) === 10 ? '('.substr($phone, 0, 3).') '.substr($phone, 3, 3).'-'.substr($phone, 6) : $phone;
         }
 
         if ($this->company === '') {
@@ -672,6 +742,49 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
 }; ?>
 
 <div class="mx-auto flex min-h-svh max-w-7xl flex-col p-4 md:p-6 lg:p-8">
+    {{-- Pre-load skeleton --}}
+    <div class="no-print fixed inset-0 z-[100] flex flex-col items-center gap-6 bg-white p-6 dark:bg-neutral-900"
+         x-data="{ ready: false }"
+         x-init="window.addEventListener('load', () => setTimeout(() => ready = true, 250))"
+         x-show="!ready">
+        <div class="flex w-full max-w-4xl flex-wrap items-center justify-between gap-y-2">
+            <div class="flex items-center gap-2">
+                <flux:skeleton animate="pulse" class="h-10 w-10 rounded-xl sm:h-12 sm:w-12" />
+                <div class="space-y-2">
+                    <flux:skeleton animate="pulse" class="h-4 w-32 rounded" />
+                    <flux:skeleton animate="pulse" class="h-3 w-44 rounded" />
+                </div>
+            </div>
+            <div class="flex items-center gap-3 sm:gap-6">
+                <div class="space-y-2 text-right">
+                    <flux:skeleton animate="pulse" class="ml-auto h-3 w-10 rounded" />
+                    <flux:skeleton animate="pulse" class="ml-auto h-5 w-8 rounded" />
+                </div>
+                <flux:skeleton animate="pulse" class="h-8 w-px rounded sm:h-10" />
+                <div class="space-y-2 text-right">
+                    <flux:skeleton animate="pulse" class="ml-auto h-3 w-12 rounded" />
+                    <flux:skeleton animate="pulse" class="ml-auto h-5 w-8 rounded" />
+                </div>
+            </div>
+        </div>
+        <div class="grid w-full max-w-sm grid-cols-2 gap-0.5 rounded-lg bg-neutral-100 p-1 dark:bg-neutral-800">
+            <flux:skeleton animate="pulse" class="flex h-8" />
+            <flux:skeleton animate="pulse" class="flex h-8" />
+        </div>
+        <div class="w-full max-w-4xl rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            <flux:skeleton class="h-6 w-1/3" animate="pulse" />
+            <div class="mt-4 space-y-4">
+                <flux:skeleton.group animate="pulse" class="space-y-2">
+                    <flux:skeleton.line />
+                    <flux:skeleton.line />
+                    <flux:skeleton.line />
+                </flux:skeleton.group>
+                <div class="flex gap-3">
+                    <flux:skeleton class="h-12 flex-1" animate="shimmer" />
+                </div>
+            </div>
+        </div>
+    </div>
     <style>
         @page {
             size: 80mm 120mm;
@@ -802,7 +915,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                 </button>
             </div>
 
-            <div x-show="activeTab === 'checkin'">
+            <div x-show="activeTab === 'checkin'" x-cloak>
                 {{-- Check-in wizard --}}
                 <div class="w-full">
                 <div class="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
@@ -890,15 +1003,36 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                     </flux:button>
                                 </div>
 
-                            @elseif ($this->showCreateForm)
-                                {{-- Create new person --}}
-                                <p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Enter your details below.') }}</p>
-                                <div class="space-y-4">
-                                    <flux:input wire:model="name" label="{{ __('Full Name') }}" type="text" required placeholder="{{ __('e.g. John Doe') }}" />
-                                    <flux:input wire:model="email" label="{{ __('Email') }}" type="email" placeholder="{{ __('e.g. john@example.com') }}" />
-                                    <flux:input wire:model="phone" label="{{ __('Phone') }}" type="tel" placeholder="{{ __('e.g. +1 555-1234') }}" />
-                                    <flux:input wire:model="company" label="{{ __('Company') }}" placeholder="{{ __('e.g. Acme Corp') }}" />
-                                    <flux:input wire:model="validIdNumber" label="{{ __('Valid ID Number') }}" placeholder="{{ __('e.g. DL-12345678') }}" />
+                            @else
+                                {{-- Create new person — full-screen modal --}}
+                                <div class="fixed inset-0 z-40 overflow-y-auto bg-white dark:bg-neutral-900 sm:bg-black/60 sm:dark:bg-black/60 sm:backdrop-blur-sm"
+                                     x-data="{ show: @entangle('showCreateForm') }"
+                                     x-show="show"
+                                     x-cloak
+                                     x-transition:enter="transition ease-out duration-300"
+                                     x-transition:enter-start="translate-y-full sm:translate-y-0 sm:translate-x-full"
+                                     x-transition:enter-end="translate-y-0 sm:translate-x-0"
+                                     x-transition:leave="transition ease-in duration-200"
+                                     x-transition:leave-start="translate-y-0 sm:translate-x-0"
+                                     x-transition:leave-end="translate-y-full sm:translate-y-0 sm:translate-x-full"
+                                     x-on:click.self="$wire.cancelCreating()">
+                                    <div class="flex min-h-full items-start p-4 pt-6 sm:items-center sm:justify-center sm:p-6">
+                                        <div class="w-full p-0 sm:max-w-md sm:rounded-2xl sm:bg-white sm:p-6 sm:shadow-2xl sm:dark:bg-neutral-900">
+                                            <div class="mb-4 flex items-start justify-between gap-4">
+                                                <div>
+                                                    <h2 class="text-lg font-semibold text-neutral-900 dark:text-white">{{ __('Register New Visitor') }}</h2>
+                                                    <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Enter your details below.') }}</p>
+                                                </div>
+                                                <button type="button" wire:click="cancelCreating" class="shrink-0 rounded-full p-2 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-300" aria-label="{{ __('Close') }}">
+                                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                                </button>
+                                            </div>
+                                            <div class="space-y-4">
+                                    <flux:input wire:model="name" name="name" label="{{ __('Full Name') }}" type="text" required placeholder="{{ __('e.g. John Doe') }}" />
+                                    <flux:input wire:model="email" name="email" label="{{ __('Email') }}" type="email" placeholder="{{ __('e.g. john@example.com') }}" />
+                                    <flux:input wire:model="phone" name="phone" label="{{ __('Phone or Mobile') }}" type="tel" required placeholder="{{ __('e.g. +1 555-1234') }}" />
+                                    <flux:input wire:model="company" name="company" label="{{ __('Company') }}" placeholder="{{ __('e.g. Acme Corp') }}" />
+                                    <flux:input wire:model="validIdNumber" name="validIdNumber" label="{{ __('Valid ID Number') }}" placeholder="{{ __('e.g. DL-12345678') }}" />
 
                                     {{-- ID photo capture --}}
                                     <div x-data="{
@@ -908,7 +1042,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                         videoReady: false,
                                         async startCamera() {
                                             try {
-                                                this.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'environment' } });
+                                                this.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: 'environment' } });
                                                 const video = this.$refs.idVideo;
                                                 video.srcObject = this.stream;
                                                 video.onloadedmetadata = () => { video.play(); this.videoReady = true; };
@@ -932,17 +1066,10 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                         destroy() { this.stopCamera(); }
                                     }">
                                         <div class="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-4 text-center dark:border-neutral-700 dark:bg-neutral-800/50">
-                                            <div x-show="!cameraActive && !photo">
+                                            <div x-show="!photo">
                                                 <svg class="mx-auto h-8 w-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                                                 <p class="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Take a photo of your ID card') }}</p>
                                                 <flux:button variant="primary" size="sm" class="mt-2" x-on:click="startCamera()">{{ __('Capture ID Photo') }}</flux:button>
-                                            </div>
-                                            <div x-show="cameraActive">
-                                                <video x-ref="idVideo" autoplay playsinline class="mx-auto max-h-48 rounded-lg"></video>
-                                                <div class="mt-3 flex gap-2 justify-center">
-                                                    <flux:button variant="primary" x-on:click="capture()" x-bind:disabled="!videoReady">{{ __('Capture') }}</flux:button>
-                                                    <flux:button variant="ghost" x-on:click="stopCamera()">{{ __('Cancel') }}</flux:button>
-                                                </div>
                                             </div>
                                             <div x-show="photo">
                                                 <div class="flex items-center gap-3 justify-center">
@@ -955,6 +1082,31 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                             </div>
                                             <canvas x-ref="idCanvas" class="hidden"></canvas>
                                         </div>
+
+                                        {{-- Full-screen camera scanner --}}
+                                        <div x-show="cameraActive" x-cloak class="fixed inset-0 z-50 flex flex-col bg-black">
+                                            <div class="relative flex flex-1 items-center justify-center overflow-hidden">
+                                                <video x-ref="idVideo" autoplay playsinline class="h-full w-full object-cover"></video>
+                                                <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+                                                    <div class="h-44 w-72 rounded-2xl border-2 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)] sm:h-48 sm:w-80"></div>
+                                                </div>
+                                                <div class="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between p-4">
+                                                    <p class="text-sm font-medium text-white drop-shadow">{{ __('Scan ID Card') }}</p>
+                                                </div>
+                                                <p class="pointer-events-none absolute bottom-20 px-6 text-center text-sm text-white/80 drop-shadow">
+                                                    {{ __('Align your ID card within the frame') }}
+                                                </p>
+                                            </div>
+                                            <div class="flex items-center justify-center gap-8 bg-black px-6 py-5">
+                                                <flux:button variant="ghost" class="!text-white/80" x-on:click="stopCamera()">
+                                                    {{ __('Cancel') }}
+                                                </flux:button>
+                                                <button type="button" x-on:click="capture()" x-bind:disabled="!videoReady" x-bind:class="videoReady ? 'opacity-100' : 'opacity-40'" class="h-16 w-16 rounded-full border-4 border-white bg-white/20 transition">
+                                                    <span class="mx-auto block h-10 w-10 rounded-full bg-white"></span>
+                                                </button>
+                                                <span class="w-24"></span>
+                                            </div>
+                                        </div>
                                     </div>
 
                                     {{-- ID Scan Button --}}
@@ -965,7 +1117,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                         {{ __("Or scan to auto-fill details") }}
                                     </p>
 
-                                    <flux:button variant="primary" class="w-full !py-3 text-base" wire:click="nextStep">
+                                    <flux:button variant="primary" class="w-full !py-3 text-base" x-on:click="$wire.nextStep().then(focusFirstError)" wire:loading.attr="data-flux-loading" wire:target="nextStep">
                                         {{ __('Continue') }} &rarr;
                                     </flux:button>
 
@@ -974,10 +1126,12 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                             {{ __('Search existing visitor') }}
                                         </button>
                                     </div>
+                                        </div>
+                                    </div>
                                 </div>
+                            </div>
 
-                            @else
-                                {{-- Search first --}}
+                                        {{-- Search first --}}
                                 <p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Search for your name or scan your badge.') }}</p>
                                 <div class="space-y-4">
                                     <div class="flex gap-2">
@@ -1003,11 +1157,16 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                                          (decodedText) => {
                                                              try {
                                                                  const url = new URL(decodedText);
-                                                                 const token = url.searchParams.get('pre');
-                                                                 if (token) {
+                                                                 const pre = url.searchParams.get('pre');
+                                                                 const checkout = url.searchParams.get('checkout');
+                                                                 if (pre || checkout) {
                                                                      this.reader.stop().catch(() => {});
                                                                      this.reader = null;
-                                                                     $wire.scanPreRegistrationByToken(token);
+                                                                     if (pre) {
+                                                                         $wire.scanPreRegistrationByToken(pre);
+                                                                     } else {
+                                                                         $wire.selectVisitorByQrToken(checkout);
+                                                                     }
                                                                  }
                                                              } catch {}
                                                          },
@@ -1021,7 +1180,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                              }">
                                             <div class="mb-2 flex items-center justify-between">
                                                 <p class="text-sm font-medium text-neutral-900 dark:text-white">{{ __('Scan Pre-Registration QR') }}</p>
-                                                <flux:button size="sm" variant="ghost" x-on:click="destroy(); $wire.$set('showPreQrScanner', false)">
+                                                <flux:button size="sm" variant="danger" x-on:click="destroy(); $wire.$set('showPreQrScanner', false)">
                                                     {{ __('Close') }}
                                                 </flux:button>
                                             </div>
@@ -1116,13 +1275,13 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                         </div>
                                     @endif
                                 @else
-                                    <flux:input wire:model="host" label="{{ __('Whom are you visiting?') }}" placeholder="{{ __('e.g. Sarah Johnson') }}" />
+                                    <flux:input wire:model="host" name="host" label="{{ __('Whom are you visiting?') }}" placeholder="{{ __('e.g. Sarah Johnson') }}" />
                                     <button type="button" wire:click="$set('useCustomHost', false)" class="text-sm text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300">
                                         {{ __('Search employee directory') }}
                                     </button>
                                 @endif
 
-                                <flux:input wire:model="purpose" label="{{ __('Purpose of visit') }}" placeholder="{{ __('e.g. Meeting, Interview, Delivery') }}" />
+                                <flux:input wire:model="purpose" name="purpose" label="{{ __('Purpose of visit') }}" placeholder="{{ __('e.g. Meeting, Interview, Delivery') }}" />
 
                                 {{-- Visit selfie capture --}}
                                 <div x-data="{
@@ -1132,7 +1291,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                     videoReady: false,
                                     async startCamera() {
                                         try {
-                                            this.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
+                                            this.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: 'user' } });
                                             const video = this.$refs.visitVideo;
                                             video.srcObject = this.stream;
                                             video.onloadedmetadata = () => { video.play(); this.videoReady = true; };
@@ -1156,17 +1315,10 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                     destroy() { this.stopCamera(); }
                                 }">
                                     <div class="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-4 text-center dark:border-neutral-700 dark:bg-neutral-800/50">
-                                        <div x-show="!cameraActive && !photo">
+                                        <div x-show="!photo">
                                             <svg class="mx-auto h-8 w-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                                             <p class="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Take a selfie for your badge') }}</p>
                                             <flux:button variant="primary" size="sm" class="mt-2" x-on:click="startCamera()">{{ __('Open Camera') }}</flux:button>
-                                        </div>
-                                        <div x-show="cameraActive">
-                                            <video x-ref="visitVideo" autoplay playsinline class="mx-auto max-h-48 rounded-lg"></video>
-                                            <div class="mt-3 flex gap-2 justify-center">
-                                                <flux:button variant="primary" x-on:click="capture()" x-bind:disabled="!videoReady">{{ __('Capture') }}</flux:button>
-                                                <flux:button variant="ghost" x-on:click="stopCamera()">{{ __('Cancel') }}</flux:button>
-                                            </div>
                                         </div>
                                         <div x-show="photo">
                                             <div class="flex items-center gap-3 justify-center">
@@ -1178,6 +1330,31 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                             </div>
                                         </div>
                                         <canvas x-ref="visitCanvas" class="hidden"></canvas>
+                                    </div>
+
+                                    {{-- Full-screen selfie scanner --}}
+                                    <div x-show="cameraActive" x-cloak class="fixed inset-0 z-50 flex flex-col bg-black">
+                                        <div class="relative flex flex-1 items-center justify-center overflow-hidden">
+                                            <video x-ref="visitVideo" autoplay playsinline class="h-full w-full object-cover"></video>
+                                            <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+                                                <div class="h-64 w-64 rounded-full border-2 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)] sm:h-72 sm:w-72"></div>
+                                            </div>
+                                            <p class="pointer-events-none absolute inset-x-0 top-4 text-center text-sm font-medium text-white drop-shadow">
+                                                {{ __('Scan Selfie') }}
+                                            </p>
+                                            <p class="pointer-events-none absolute bottom-20 px-6 text-center text-sm text-white/80 drop-shadow">
+                                                {{ __('Position your face within the circle') }}
+                                            </p>
+                                        </div>
+                                        <div class="flex items-center justify-center gap-8 bg-black px-6 py-5">
+                                            <flux:button variant="ghost" class="!text-white/80" x-on:click="stopCamera()">
+                                                {{ __('Cancel') }}
+                                            </flux:button>
+                                            <button type="button" x-on:click="capture()" x-bind:disabled="!videoReady" x-bind:class="videoReady ? 'opacity-100' : 'opacity-40'" class="h-16 w-16 rounded-full border-4 border-white bg-white/20 transition">
+                                                <span class="mx-auto block h-10 w-10 rounded-full bg-white"></span>
+                                            </button>
+                                            <span class="w-24"></span>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -1254,7 +1431,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                     <flux:button variant="ghost" class="!py-3" wire:click="prevStep">
                                         &larr; {{ __('Back') }}
                                     </flux:button>
-                                    <flux:button variant="primary" class="flex-1 !py-3 text-base" wire:click="checkIn">
+                                    <flux:button variant="primary" class="flex-1 !py-3 text-base" x-on:click="$wire.checkIn().then(focusFirstError)" wire:loading.attr="data-flux-loading" wire:target="checkIn">
                                         {{ __('Check In') }}
                                     </flux:button>
                                 </div>
@@ -1265,7 +1442,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                 </div>
             </div>
 
-            <div x-show="activeTab === 'onsite'">
+            <div x-show="activeTab === 'onsite'" x-cloak>
                 {{-- On-site visitors --}}
                 <div class="w-full">
                 <div class="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
@@ -1314,7 +1491,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                              }">
                             <div class="mb-2 flex items-center justify-between">
                                 <p class="text-sm font-medium text-neutral-900 dark:text-white">{{ __('Scan QR Code') }}</p>
-                                <flux:button size="sm" variant="ghost" x-on:click="destroy(); $wire.$set('showQrScanner', false)">
+                                <flux:button size="sm" variant="danger" x-on:click="destroy(); $wire.$set('showQrScanner', false)">
                                     {{ __('Close') }}
                                 </flux:button>
                             </div>
@@ -1427,7 +1604,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                     <flux:button variant="primary" size="sm" class="mt-2" x-on:click="startCamera()">{{ __('Capture Checkout Photo') }}</flux:button>
                 </div>
                 <div x-show="cameraActive">
-                    <video x-ref="checkoutVideo" autoplay playsinline class="mx-auto max-h-48 rounded-lg"></video>
+                    <video x-ref="checkoutVideo" autoplay playsinline class="w-full aspect-square rounded-lg object-cover"></video>
                     <div class="mt-3 flex gap-2 justify-center">
                         <flux:button variant="primary" x-on:click="capture()" x-bind:disabled="!videoReady">{{ __('Capture') }}</flux:button>
                         <flux:button variant="ghost" x-on:click="stopCamera()">{{ __('Cancel') }}</flux:button>
@@ -1500,7 +1677,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                         <flux:button variant="primary" size="sm" class="mt-2" x-on:click="startCamera()">{{ __('Capture Checkout Photo') }}</flux:button>
                     </div>
                     <div x-show="cameraActive">
-                        <video x-ref="qrVideo" autoplay playsinline class="mx-auto max-h-48 rounded-lg"></video>
+                        <video x-ref="qrVideo" autoplay playsinline class="w-full aspect-square rounded-lg object-cover"></video>
                         <div class="mt-3 flex gap-2 justify-center">
                             <flux:button variant="primary" x-on:click="capture()" x-bind:disabled="!videoReady">{{ __('Capture') }}</flux:button>
                             <flux:button variant="ghost" x-on:click="stopCamera()">{{ __('Cancel') }}</flux:button>
@@ -1540,6 +1717,17 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
             @if ($idCardPreview)
                 <div class="overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-700">
                     <img src="{{ $idCardPreview }}" alt="ID card preview" class="w-full max-h-64 object-contain bg-neutral-100 dark:bg-neutral-800">
+                </div>
+            @endif
+
+            @if ($idCardPreview && ! $this->idOcrText && ! $this->processingIdCard)
+                <div class="flex gap-2">
+                    <flux:button variant="primary" class="flex-1" wire:click="processIdCard">
+                        {{ __('Scan ID Card') }}
+                    </flux:button>
+                    <flux:button variant="ghost" class="flex-1" wire:click="closeIdScanModal">
+                        {{ __('Cancel') }}
+                    </flux:button>
                 </div>
             @endif
 

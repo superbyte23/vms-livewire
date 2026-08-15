@@ -135,3 +135,22 @@ test('confirming invalid qr token does not check anyone out', function () {
         'status' => 'checked_in',
     ]);
 });
+
+test('scanning a visitor badge qr at check-in selects the visitor', function () {
+    $visitor = Visitor::factory()->create([
+        'qr_code_token' => 'badge-token-789',
+    ]);
+
+    Livewire::test('pages::welcome')
+        ->call('selectVisitorByQrToken', 'badge-token-789')
+        ->assertSet('selectedVisitorId', $visitor->id)
+        ->assertSet('selectedPreRegistrationId', null)
+        ->assertSet('showPreQrScanner', false);
+});
+
+test('scanning an unknown badge qr at check-in selects nothing', function () {
+    Livewire::test('pages::welcome')
+        ->call('selectVisitorByQrToken', 'unknown-token')
+        ->assertSet('selectedVisitorId', null)
+        ->assertSet('showPreQrScanner', false);
+});

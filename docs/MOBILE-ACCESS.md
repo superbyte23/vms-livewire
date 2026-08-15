@@ -50,8 +50,22 @@ netsh advfirewall firewall add rule name="VMS HTTPS 8443" dir=in action=allow pr
 | Path | Setup | Camera on phone | Notes |
 |---|---|---|---|
 | **Quick test (Android only)** | Android `chrome://flags/#unsafely-treat-insecure-origin-as-secure` → add `http://<pc-ip>:8000` + `npm run build` + `php artisan serve` | ✅ over plain HTTP | Android-only, dev flag |
-| **Proper local HTTPS** | `npm run build` + reverse proxy with phone-trusted cert (mkcert or Caddy internal CA) + firewall rule | ✅ over HTTPS | Any device, one-time CA install |
+| **Working local HTTPS (this repo)** | mkcert CA + cert for `192.168.1.13` + Caddy proxy 8443 → `127.0.0.1:8001` + built assets + CA installed on phone | ✅ over HTTPS | Any device; one-time CA install per device; see below |
 | **Public cert** | Own domain + DNS-01 Let's Encrypt cert on Apache/nginx | ✅ over HTTPS | Zero phone setup, requires a domain |
+
+## HTTPS setup (in place — Caddy + mkcert)
+
+- **Certs:** mkcert CA at `$(mkcert -CAROOT)`; site cert in `.certs/` (gitignored) for SANs `192.168.1.13`, `localhost`, `127.0.0.1`.
+- **Proxy:** `Caddyfile` at repo root serves `https://192.168.1.13:8443` → `127.0.0.1:8001` (`auto_https disable_redirects` so it doesn't fight Apache for port 80). Started via `caddy run` (log: `storage/logs/caddy.log`).
+- **Trusted proxy:** `bootstrap/app.php` → `trustProxies(at: '127.0.0.1')` so Laravel generates `https://` asset URLs behind Caddy (no mixed content).
+- **Assets:** `public/hot` must be **absent** (vite dev URLs are `http://` and would be mixed-content-blocked). `npm run build` → Laravel serves built assets same-origin. Deleting `public/hot` switches PC dev to built assets too; restarting `composer dev` recreates it for HMR.
+
+### To use from a phone
+1. Windows Firewall (admin): allow inbound TCP 8443 (see KNOWN-ISSUES for the netsh command).
+2. On the phone, download and install the CA: `http://192.168.1.13:8001/rootCA.pem` (Android: Settings → Security → CA certificate; iOS: install profile + enable full trust).
+3. Open `https://192.168.1.13:8443` — camera (`getUserMedia`) works.
+
+> If the LAN IP changes: regenerate the cert (`mkcert <new-ip> …`), update `Caddyfile` + `.env` `VITE_HOST`/`APP_URL`, and re-add the firewall rule.
 
 ## Quick reference (from this session)
 

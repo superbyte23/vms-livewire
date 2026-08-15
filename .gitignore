@@ -1,8 +1,10 @@
 /.phpunit.cache
+/.certs
 /node_modules
 /public/build
 /public/fonts-manifest.dev.json
 /public/hot
+/public/rootCA.pem
 /public/storage
 /storage/*.key
 /storage/pail

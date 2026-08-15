@@ -1,0 +1,8 @@
+{
+    auto_https disable_redirects
+}
+
+https://192.168.1.13:8443 {
+    tls /var/www/vms-livewire/.certs/192.168.1.13.pem /var/www/vms-livewire/.certs/192.168.1.13-key.pem
+    reverse_proxy 127.0.0.1:8001
+}
