@@ -395,7 +395,7 @@ new #[Title('Pre-Registrations')] #[Layout('layouts::app')] class extends Compon
                 <flux:input wire:model="createHost" label="Host name (custom)" placeholder="e.g. Sarah Johnson" />
             </div>
             <flux:input wire:model="createPurpose" label="Purpose" placeholder="e.g. Meeting, Interview" />
-            <flux:input wire:model="createExpectedDate" label="Expected date (optional)" type="date" />
+            <x-date-picker wire:model="createExpectedDate" label="Expected date (optional)" />
 
             <div class="flex gap-2 pt-2">
                 <flux:button variant="primary" class="flex-1 !py-3" wire:click="createPreRegistration">
@@ -432,7 +432,7 @@ new #[Title('Pre-Registrations')] #[Layout('layouts::app')] class extends Compon
                 <flux:input wire:model="editHost" label="Host name (custom)" placeholder="e.g. Sarah Johnson" />
             </div>
             <flux:input wire:model="editPurpose" label="Purpose" placeholder="e.g. Meeting, Interview" />
-            <flux:input wire:model="editExpectedDate" label="Expected date (optional)" type="date" />
+            <x-date-picker wire:model="editExpectedDate" label="Expected date (optional)" />
             <flux:textarea wire:model="editNotes" label="Notes" placeholder="Internal notes..." rows="3" />
 
             <div class="flex gap-2 pt-2">

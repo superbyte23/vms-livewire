@@ -177,10 +177,10 @@ new #[Title('Visitor Log')] #[Layout('layouts::app')] class extends Component {
             </flux:select>
         </div>
         <div class="w-40">
-            <flux:input wire:model.change="dateFrom" type="date" placeholder="From date" />
+            <x-date-picker wire:model.change="dateFrom" placeholder="From date" :allow-past="true" />
         </div>
         <div class="w-40">
-            <flux:input wire:model.change="dateTo" type="date" placeholder="To date" />
+            <x-date-picker wire:model.change="dateTo" placeholder="To date" :allow-past="true" />
         </div>
         @if ($this->search || $this->statusFilter || $this->dateFrom || $this->dateTo)
             <flux:button variant="ghost" wire:click="clearFilters" class="shrink-0">

@@ -153,7 +153,7 @@ new #[Title('Pre-Register Your Visit')] #[Layout('layouts::kiosk')] class extend
                 </div>
 
                 <flux:input wire:model="purpose" label="{{ __('Purpose of visit') }}" placeholder="{{ __('e.g. Meeting, Interview, Delivery') }}" />
-                <flux:input wire:model="expectedDate" label="{{ __('Expected date (optional)') }}" type="date" />
+                <x-date-picker wire:model="expectedDate" label="{{ __('Expected date (optional)') }}" />
 
                 <flux:button variant="primary" class="w-full !py-3 text-base" wire:click="submit">
                     {{ __('Submit Pre-Registration') }}
