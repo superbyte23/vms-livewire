@@ -203,92 +203,100 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
     </div>
 
     {{-- Table --}}
-    <div class="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900">
-        @if ($this->visitors->isEmpty())
+    @if ($this->visitors->isEmpty())
             <div class="flex flex-col items-center justify-center py-16 text-center">
                 <p class="text-neutral-400 dark:text-neutral-500">
                     {{ $this->search ? 'No visitors match your search.' : 'No visitors found.' }}
                 </p>
             </div>
         @else
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead>
-                        <tr class="border-b border-neutral-100 text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
-                            <th class="px-5 py-3 font-medium">Name</th>
-                            <th class="px-5 py-3 font-medium hidden sm:table-cell">Email</th>
-                            <th class="px-5 py-3 font-medium hidden md:table-cell">Phone</th>
-                            <th class="px-5 py-3 font-medium hidden lg:table-cell">ID Number</th>
-                            <th class="px-5 py-3 font-medium hidden xl:table-cell">Visits</th>
-                            <th class="px-5 py-3 font-medium">Flagged</th>
-                            <th class="px-5 py-3 font-medium hidden lg:table-cell">Created</th>
-                            <th class="px-5 py-3 font-medium text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800">
-                        @foreach ($this->visitors as $visitor)
-                            <tr class="group" wire:key="{{ $visitor->id }}">
-                                <td class="px-5 py-3">
-                                    <div class="flex items-center gap-3">
-                                        @if ($visitor->photo)
-                                            <img src="{{ $visitor->photo }}" alt="" class="h-9 w-9 shrink-0 rounded-full object-cover border border-neutral-200 dark:border-neutral-700">
-                                        @else
-                                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
-                                                {{ substr($visitor->name, 0, 2) }}
-                                            </div>
-                                        @endif
-                                        <div>
-                                            <span class="font-medium text-neutral-900 dark:text-white">{{ $visitor->name }}</span>
-                                            @if ($visitor->company)
-                                                <div class="text-xs text-neutral-400 dark:text-neutral-500">{{ $visitor->company }}</div>
-                                            @endif
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="px-5 py-3 text-neutral-600 dark:text-neutral-300 hidden sm:table-cell">{{ $visitor->email ?: '—' }}</td>
-                                <td class="px-5 py-3 text-neutral-500 dark:text-neutral-400 hidden md:table-cell">{{ $visitor->phone ?: '—' }}</td>
-                                <td class="px-5 py-3 text-neutral-500 dark:text-neutral-400 hidden lg:table-cell">{{ $visitor->valid_id_number ?: '—' }}</td>
-                                <td class="px-5 py-3 hidden xl:table-cell">
-                                    <span class="text-neutral-500 dark:text-neutral-400">{{ $visitor->logs()->count() }}</span>
-                                </td>
-                                <td class="px-5 py-3">
-                                    @if ($visitor->is_flagged)
-                                        <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                                            <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20"><path d="M3.6 16.3c-.25 0-.5-.1-.7-.3-.4-.4-.4-1 0-1.4l4.7-4.7-4.7-4.7c-.4-.4-.4-1 0-1.4.4-.4 1-.4 1.4 0l4.7 4.7 4.7-4.7c.4-.4 1-.4 1.4 0 .4.4.4 1 0 1.4L10.4 10l4.7 4.7c.4.4.4 1 0 1.4-.2.2-.4.3-.7.3-.25 0-.5-.1-.7-.3L8.97 11.4l-4.67 4.6c-.2.2-.5.3-.7.3z"/></svg>
-                                            Flagged
-                                        </span>
-                                    @else
-                                        <span class="text-neutral-300 dark:text-neutral-600">—</span>
-                                    @endif
-                                </td>
-                                <td class="px-5 py-3 text-neutral-500 dark:text-neutral-400 hidden lg:table-cell">{{ $visitor->created_at->format('M j, Y') }}</td>
-                                <td class="px-5 py-3 text-right">
-                                    <div class="flex items-center justify-end gap-1">
-                                        <flux:button size="sm" variant="ghost" wire:click="viewVisitor('{{ $visitor->id }}')" icon="eye" title="View" />
-                                        <flux:button size="sm" variant="ghost" wire:click="openEditModal('{{ $visitor->id }}')" icon="pencil" title="Edit" />
-                                        <flux:button
-                                            size="sm"
-                                            variant="ghost"
-                                            wire:click="toggleFlag('{{ $visitor->id }}')"
-                                            title="{{ $visitor->is_flagged ? 'Remove from watchlist' : 'Add to watchlist' }}"
-                                            class="{{ $visitor->is_flagged ? 'text-amber-500 hover:text-amber-700 dark:hover:text-amber-400' : 'text-neutral-400 hover:text-amber-500' }}"
-                                        >
-                                            <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20"><path d="M7 2a1 1 0 00-.707 1.707L7 4.414v3.758a1 1 0 01-.293.707l-4 4C.817 14.769 2.156 18 4.828 18h10.344c2.672 0 4.01-3.231 2.12-5.121l-4-4A1 1 0 0113 8.172V4.414l.707-.707A1 1 0 0013 2H7z"/></svg>
-                                        </flux:button>
-                                        <flux:button size="sm" variant="ghost" wire:click="confirmDelete('{{ $visitor->id }}')" icon="trash" class="text-red-500 hover:text-red-700 dark:hover:text-red-400" title="Delete" />
-                                    </div>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
+            <flux:table :paginate="$this->visitors">
+                <flux:table.columns>
+                    <flux:table.column>Name</flux:table.column>
+                    <flux:table.column class="hidden sm:table-cell">Email</flux:table.column>
+                    <flux:table.column class="hidden md:table-cell">Phone</flux:table.column>
+                    <flux:table.column class="hidden lg:table-cell">ID Number</flux:table.column>
+                    <flux:table.column class="hidden md:table-cell">QR</flux:table.column>
+                    <flux:table.column class="hidden xl:table-cell">Visits</flux:table.column>
+                    <flux:table.column>Flagged</flux:table.column>
+                    <flux:table.column class="hidden lg:table-cell">Created</flux:table.column>
+                    <flux:table.column align="end">Actions</flux:table.column>
+                </flux:table.columns>
 
-            <div class="border-t border-neutral-100 px-5 py-3 dark:border-neutral-800">
-                {{ $this->visitors->links() }}
-            </div>
+                <flux:table.rows>
+                    @foreach ($this->visitors as $visitor)
+                        <flux:table.row :key="$visitor->id">
+                            <flux:table.cell variant="strong">
+                                <div class="flex items-center gap-3">
+                                    @if ($visitor->photo)
+                                        <img src="{{ $visitor->photo }}" alt="" class="h-9 w-9 shrink-0 rounded-full object-cover border border-neutral-200 dark:border-neutral-700">
+                                    @else
+                                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                                            {{ substr($visitor->name, 0, 2) }}
+                                        </div>
+                                    @endif
+                                    <div>
+                                        <span>{{ $visitor->name }}</span>
+                                        @if ($visitor->company)
+                                            <div class="text-xs text-zinc-500">{{ $visitor->company }}</div>
+                                        @endif
+                                    </div>
+                                </div>
+                            </flux:table.cell>
+                            <flux:table.cell class="hidden sm:table-cell">{{ $visitor->email ?: '—' }}</flux:table.cell>
+                            <flux:table.cell class="hidden md:table-cell">{{ $visitor->phone ?: '—' }}</flux:table.cell>
+                            <flux:table.cell class="hidden lg:table-cell">{{ $visitor->valid_id_number ?: '—' }}</flux:table.cell>
+                            <flux:table.cell class="hidden md:table-cell">
+                                @if ($visitor->qr_code_token)
+                                    <img src="{{ route('qr.code', $visitor->qr_code_token) }}" alt="QR Code" class="h-10 w-10 rounded border border-neutral-200 object-cover dark:border-neutral-700">
+                                @else
+                                    <span class="text-neutral-300 dark:text-neutral-600">—</span>
+                                @endif
+                            </flux:table.cell>
+                            <flux:table.cell class="hidden xl:table-cell">
+                                <span class="text-neutral-500 dark:text-neutral-400">{{ $visitor->logs()->count() }}</span>
+                            </flux:table.cell>
+                            <flux:table.cell>
+                                @if ($visitor->is_flagged)
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                        <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20"><path d="M3.6 16.3c-.25 0-.5-.1-.7-.3-.4-.4-.4-1 0-1.4l4.7-4.7-4.7-4.7c-.4-.4-.4-1 0-1.4.4-.4 1-.4 1.4 0l4.7 4.7 4.7-4.7c.4-.4 1-.4 1.4 0 .4.4.4 1 0 1.4L10.4 10l4.7 4.7c.4.4.4 1 0 1.4-.2.2-.4.3-.7.3-.25 0-.5-.1-.7-.3L8.97 11.4l-4.67 4.6c-.2.2-.5.3-.7.3z"/></svg>
+                                        Flagged
+                                    </span>
+                                @else
+                                    <span class="text-neutral-300 dark:text-neutral-600">—</span>
+                                @endif
+                            </flux:table.cell>
+                            <flux:table.cell class="hidden lg:table-cell">{{ $visitor->created_at->format('M j, Y') }}</flux:table.cell>
+                            <flux:table.cell align="end">
+                                <flux:dropdown position="bottom" align="end">
+                                    <flux:button size="sm" variant="ghost" icon="ellipsis-horizontal" class="cursor-pointer" />
+                                    <flux:menu>
+                                        <flux:menu.item icon="eye" wire:click="viewVisitor('{{ $visitor->id }}')">
+                                            View
+                                        </flux:menu.item>
+                                        <flux:menu.item icon="pencil" wire:click="openEditModal('{{ $visitor->id }}')">
+                                            Edit
+                                        </flux:menu.item>
+                                        <flux:menu.separator />
+                                        <flux:menu.item
+                                            icon="flag"
+                                            wire:click="toggleFlag('{{ $visitor->id }}')"
+                                            class="{{ $visitor->is_flagged ? 'text-amber-500' : '' }}"
+                                        >
+                                            {{ $visitor->is_flagged ? 'Remove from Watchlist' : 'Add to Watchlist' }}
+                                        </flux:menu.item>
+                                        <flux:menu.separator />
+                                        <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete('{{ $visitor->id }}')">
+                                            Delete
+                                        </flux:menu.item>
+                                    </flux:menu>
+                                </flux:dropdown>
+                            </flux:table.cell>
+                        </flux:table.row>
+                    @endforeach
+                </flux:table.rows>
+            </flux:table>
         @endif
-    </div>
 
     {{-- Create Visitor Modal --}}
     <flux:modal wire:model="showCreateModal" name="create-visitor" class="min-w-sm">

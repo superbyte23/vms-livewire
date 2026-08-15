@@ -26,14 +26,14 @@ class VisitorCheckedOut extends Notification implements ShouldQueue
         $visitor = $this->visitorLog->visitor;
 
         return (new MailMessage)
-            ->subject('Visitor Check-Out: ' . $visitor->name)
-            ->greeting('Hello ' . $notifiable->name . ',')
+            ->subject('Visitor Check-Out: '.$visitor->name)
+            ->greeting('Hello '.$notifiable->name.',')
             ->line('A visitor has checked out.')
-            ->line('**Name:** ' . $visitor->name)
-            ->line('**Company:** ' . ($visitor->company ?: 'N/A'))
-            ->line('**Badge:** ' . $this->visitorLog->badge_number)
-            ->line('**Checked in at:** ' . ($this->visitorLog->checked_in_at ? $this->visitorLog->checked_in_at->format('M j, Y g:i A') : 'N/A'))
-            ->line('**Checked out at:** ' . ($this->visitorLog->checked_out_at ? $this->visitorLog->checked_out_at->format('M j, Y g:i A') : 'N/A'))
+            ->line('**Name:** '.$visitor->name)
+            ->line('**Company:** '.($visitor->company ?: 'N/A'))
+            ->line('**Badge:** '.$this->visitorLog->badge_number)
+            ->line('**Checked in at:** '.($this->visitorLog->checked_in_at ? $this->visitorLog->checked_in_at->format('M j, Y g:i A') : 'N/A'))
+            ->line('**Checked out at:** '.($this->visitorLog->checked_out_at ? $this->visitorLog->checked_out_at->format('M j, Y g:i A') : 'N/A'))
             ->action('View Visitor Log', url('/visitors'))
             ->line('Thank you!');
     }
@@ -49,7 +49,7 @@ class VisitorCheckedOut extends Notification implements ShouldQueue
             'badge_number' => $this->visitorLog->badge_number,
             'checked_in_at' => $this->visitorLog->checked_in_at?->toIso8601String(),
             'checked_out_at' => $this->visitorLog->checked_out_at?->toIso8601String(),
-            'message' => $visitor->name . ' has checked out.',
+            'message' => $visitor->name.' has checked out.',
         ];
     }
 

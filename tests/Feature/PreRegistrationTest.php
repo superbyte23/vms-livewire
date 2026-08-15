@@ -22,16 +22,12 @@ test('guests can access the public pre-register page', function () {
     $this->get(route('pre-register'))->assertOk();
 });
 
-test('visitor can pre-register and host is notified', function () {
-    $host = User::factory()->create();
-
+test('visitor can pre-register without a host', function () {
     Livewire::test('pages::pre-register')
         ->set('name', 'John Doe')
         ->set('email', 'john@example.com')
         ->set('phone', '555-0123')
         ->set('company', 'Acme Inc')
-        ->set('host', $host->name)
-        ->set('hostUserId', (string) $host->id)
         ->set('purpose', 'Meeting')
         ->call('submit');
 
@@ -39,9 +35,9 @@ test('visitor can pre-register and host is notified', function () {
 
     expect($pre)->not->toBeNull()
         ->and($pre->status)->toBe('pending')
-        ->and($pre->host_user_id)->toBe($host->id);
+        ->and($pre->host)->toBeNull();
 
-    Notification::assertSentTo($host, VisitorPreRegistered::class);
+    Notification::assertNothingSent();
 });
 
 test('pre-registration requires a name', function () {
@@ -133,6 +129,179 @@ test('kiosk check-in with pre-registration still notifies the host of check-in',
         ->call('checkIn');
 
     Notification::assertSentTo($host, VisitorCheckedIn::class);
+});
+
+// ── Pre-registration QR code ──
+
+test('pre-registration generates a permanent qr token', function () {
+    Livewire::test('pages::pre-register')
+        ->set('name', 'QR Visitor')
+        ->set('purpose', 'Tour')
+        ->call('submit');
+
+    $pre = PreRegistration::where('name', 'QR Visitor')->first();
+
+    expect($pre->qr_code_token)->not->toBeNull()
+        ->and(strlen($pre->qr_code_token))->toBe(32);
+});
+
+test('kiosk with pre-registration token in url prefills the visitor', function () {
+    $pre = PreRegistration::factory()->pending()->create([
+        'name' => 'QR Match Person',
+        'email' => 'qr@example.com',
+        'qr_code_token' => 'pre-match-token',
+    ]);
+
+    $this->get(route('home', ['pre' => 'pre-match-token']))
+        ->assertOk()
+        ->assertSee('We found your pre-registration')
+        ->assertSee('QR Match Person');
+
+    $this->assertDatabaseHas('pre_registrations', [
+        'id' => $pre->id,
+        'status' => 'pending',
+    ]);
+});
+
+test('kiosk with used pre-registration token does not prefill', function () {
+    PreRegistration::factory()->used()->create([
+        'name' => 'Old Person',
+        'qr_code_token' => 'used-pre-token',
+    ]);
+
+    $this->get(route('home', ['pre' => 'used-pre-token']))
+        ->assertOk()
+        ->assertDontSee('Old Person');
+});
+
+test('scanning a valid pre-registration token matches the visitor', function () {
+    $pre = PreRegistration::factory()->pending()->create([
+        'name' => 'Scanner Person',
+        'email' => 'scan@example.com',
+        'qr_code_token' => 'scan-pre-token',
+    ]);
+
+    Livewire::test('pages::welcome')
+        ->call('scanPreRegistrationByToken', 'scan-pre-token')
+        ->assertSet('selectedPreRegistrationId', $pre->id)
+        ->assertSet('name', 'Scanner Person')
+        ->assertSet('email', 'scan@example.com')
+        ->assertSet('activeTab', 'checkin');
+});
+
+test('scanning an invalid pre-registration token selects nothing', function () {
+    Livewire::test('pages::welcome')
+        ->call('scanPreRegistrationByToken', 'fake-pre-token')
+        ->assertSet('selectedPreRegistrationId', null);
+});
+
+test('kiosk check-in transfers the pre-registration qr token to the visitor', function () {
+    $pre = PreRegistration::factory()->pending()->create([
+        'name' => 'Transfer Person',
+        'email' => 'transfer@example.com',
+        'qr_code_token' => 'transfer-token',
+    ]);
+
+    Livewire::test('pages::welcome')
+        ->call('selectPreRegistration', $pre->id)
+        ->call('checkIn');
+
+    $visitor = Visitor::where('email', 'transfer@example.com')->first();
+
+    expect($visitor)->not->toBeNull()
+        ->and($visitor->qr_code_token)->toBe('transfer-token')
+        ->and($pre->fresh()->status)->toBe('used');
+});
+
+// ── Valid ID photo ──
+
+test('pre-registration stores a valid id photo', function () {
+    $idPhoto = 'data:image/jpeg;base64,'.base64_encode('fake-image-bytes');
+
+    Livewire::test('pages::pre-register')
+        ->set('name', 'ID Photo Visitor')
+        ->set('validIdPhoto', $idPhoto)
+        ->call('submit');
+
+    $pre = PreRegistration::where('name', 'ID Photo Visitor')->first();
+
+    expect($pre->valid_id_photo)->toBe($idPhoto);
+});
+
+test('pre-registration without valid id photo stores null', function () {
+    Livewire::test('pages::pre-register')
+        ->set('name', 'No Photo Visitor')
+        ->call('submit');
+
+    $pre = PreRegistration::where('name', 'No Photo Visitor')->first();
+
+    expect($pre->valid_id_photo)->toBeNull();
+});
+
+test('submitting a pre-registration redirects to the completion page', function () {
+    Livewire::test('pages::pre-register')
+        ->set('name', 'Redirect Person')
+        ->set('purpose', 'Tour')
+        ->call('submit')
+        ->assertRedirect();
+
+    $pre = PreRegistration::where('name', 'Redirect Person')->first();
+
+    expect($pre)->not->toBeNull();
+});
+
+test('completion page shows the pass for a pending pre-registration', function () {
+    $pre = PreRegistration::factory()->pending()->create([
+        'name' => 'Complete Page Person',
+        'company' => 'Acme Inc',
+        'purpose' => 'Meeting',
+        'qr_code_token' => 'complete-page-token',
+    ]);
+
+    $this->get(route('pre-register.complete', $pre))
+        ->assertOk()
+        ->assertSee('Complete Page Person')
+        ->assertSee('Acme Inc')
+        ->assertSee('Download Card');
+});
+
+test('completion page stays valid after a refresh', function () {
+    $pre = PreRegistration::factory()->pending()->create([
+        'name' => 'Refresh Safe Person',
+        'qr_code_token' => 'refresh-safe-token',
+    ]);
+
+    $this->get(route('pre-register.complete', $pre))->assertSee('Refresh Safe Person');
+    $this->get(route('pre-register.complete', $pre))->assertSee('Refresh Safe Person');
+});
+
+test('completion page shows a notice for a used pre-registration', function () {
+    $pre = PreRegistration::factory()->used()->create([
+        'name' => 'Used Pass Person',
+    ]);
+
+    $this->get(route('pre-register.complete', $pre))
+        ->assertOk()
+        ->assertSee('no longer valid')
+        ->assertDontSee('Download Card');
+});
+
+test('kiosk check-in transfers the pre-registration valid id photo to the visitor', function () {
+    $idPhoto = 'data:image/jpeg;base64,'.base64_encode('fake-image-bytes');
+    $pre = PreRegistration::factory()->pending()->create([
+        'name' => 'Photo Transfer',
+        'email' => 'phototransfer@example.com',
+        'valid_id_photo' => $idPhoto,
+    ]);
+
+    Livewire::test('pages::welcome')
+        ->call('selectPreRegistration', $pre->id)
+        ->call('checkIn');
+
+    $visitor = Visitor::where('email', 'phototransfer@example.com')->first();
+
+    expect($visitor)->not->toBeNull()
+        ->and($visitor->photo)->toBe($idPhoto);
 });
 
 // ── Admin pre-registrations page ──

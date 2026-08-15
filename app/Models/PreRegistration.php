@@ -18,11 +18,13 @@ class PreRegistration extends Model
         'email',
         'phone',
         'company',
+        'valid_id_photo',
         'host',
         'host_user_id',
         'purpose',
         'expected_date',
         'status',
+        'qr_code_token',
         'notes',
     ];
 

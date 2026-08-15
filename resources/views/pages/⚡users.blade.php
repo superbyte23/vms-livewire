@@ -166,91 +166,76 @@ new #[Title('User Management')] #[Layout('layouts::app')] class extends Componen
     </div>
 
     {{-- Table --}}
-    <div class="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900">
-        @if ($this->users->isEmpty())
+    @if ($this->users->isEmpty())
             <div class="flex flex-col items-center justify-center py-16 text-center">
                 <p class="text-neutral-400 dark:text-neutral-500">
                     {{ $this->search ? 'No users match your search.' : 'No users found.' }}
                 </p>
             </div>
         @else
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead>
-                        <tr class="border-b border-neutral-100 text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
-                            <th class="px-5 py-3 font-medium cursor-pointer hover:text-neutral-700 dark:hover:text-neutral-300" wire:click="sortBy('name')">
-                                <div class="flex items-center gap-1">
-                                    Name
-                                    @if ($this->sortField === 'name')
-                                        <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
-                                    @endif
-                                </div>
-                            </th>
-                            <th class="px-5 py-3 font-medium cursor-pointer hover:text-neutral-700 dark:hover:text-neutral-300" wire:click="sortBy('email')">
-                                <div class="flex items-center gap-1">
-                                    Email
-                                    @if ($this->sortField === 'email')
-                                        <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
-                                    @endif
-                                </div>
-                            </th>
-                            <th class="px-5 py-3 font-medium hidden sm:table-cell">Verified</th>
-                            <th class="px-5 py-3 font-medium hidden md:table-cell cursor-pointer hover:text-neutral-700 dark:hover:text-neutral-300" wire:click="sortBy('created_at')">
-                                <div class="flex items-center gap-1">
-                                    Created
-                                    @if ($this->sortField === 'created_at')
-                                        <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
-                                    @endif
-                                </div>
-                            </th>
-                            <th class="px-5 py-3 font-medium text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800">
-                        @foreach ($this->users as $user)
-                            <tr class="group" wire:key="{{ $user->id }}">
-                                <td class="px-5 py-3">
-                                    <div class="flex items-center gap-3">
-                                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
-                                            {{ $user->initials() }}
-                                        </div>
-                                        <div>
-                                            <span class="font-medium text-neutral-900 dark:text-white">{{ $user->name }}</span>
-                                            @if ($user->id === auth()->id())
-                                                <span class="ml-1.5 inline-flex items-center rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">You</span>
-                                            @endif
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="px-5 py-3 text-neutral-600 dark:text-neutral-300">{{ $user->email }}</td>
-                                <td class="px-5 py-3 hidden sm:table-cell">
-                                    @if ($user->email_verified_at)
-                                        <span class="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                                            Verified
-                                        </span>
-                                    @else
-                                        <span class="text-neutral-400 dark:text-neutral-500">Unverified</span>
-                                    @endif
-                                </td>
-                                <td class="px-5 py-3 text-neutral-500 dark:text-neutral-400 hidden md:table-cell">{{ $user->created_at->format('M j, Y') }}</td>
-                                <td class="px-5 py-3 text-right">
-                                    <div class="flex items-center justify-end gap-1">
-                                        <flux:button size="sm" variant="ghost" wire:click="openEditModal('{{ $user->id }}')" icon="pencil" class="opacity-0 group-hover:opacity-100 transition-opacity" />
-                                        <flux:button size="sm" variant="ghost" wire:click="confirmDelete('{{ $user->id }}')" icon="trash" class="opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 dark:hover:text-red-400" />
-                                    </div>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
+            <flux:table :paginate="$this->users">
+                <flux:table.columns>
+                    <flux:table.column class="cursor-pointer hover:text-neutral-700 dark:hover:text-neutral-300" wire:click="sortBy('name')">
+                        Name
+                        @if ($this->sortField === 'name')
+                            <svg class="ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+                        @endif
+                    </flux:table.column>
+                    <flux:table.column class="cursor-pointer hover:text-neutral-700 dark:hover:text-neutral-300" wire:click="sortBy('email')">
+                        Email
+                        @if ($this->sortField === 'email')
+                            <svg class="ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+                        @endif
+                    </flux:table.column>
+                    <flux:table.column class="hidden sm:table-cell">Verified</flux:table.column>
+                    <flux:table.column class="hidden md:table-cell cursor-pointer hover:text-neutral-700 dark:hover:text-neutral-300" wire:click="sortBy('created_at')">
+                        Created
+                        @if ($this->sortField === 'created_at')
+                            <svg class="ml-1 h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+                        @endif
+                    </flux:table.column>
+                    <flux:table.column align="end">Actions</flux:table.column>
+                </flux:table.columns>
 
-            <div class="border-t border-neutral-100 px-5 py-3 dark:border-neutral-800">
-                {{ $this->users->links() }}
-            </div>
+                <flux:table.rows>
+                    @foreach ($this->users as $user)
+                        <flux:table.row :key="$user->id" class="group">
+                            <flux:table.cell variant="strong">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                                        {{ $user->initials() }}
+                                    </div>
+                                    <div>
+                                        <span>{{ $user->name }}</span>
+                                        @if ($user->id === auth()->id())
+                                            <span class="ml-1.5 inline-flex items-center rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">You</span>
+                                        @endif
+                                    </div>
+                                </div>
+                            </flux:table.cell>
+                            <flux:table.cell>{{ $user->email }}</flux:table.cell>
+                            <flux:table.cell class="hidden sm:table-cell">
+                                @if ($user->email_verified_at)
+                                    <span class="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                        Verified
+                                    </span>
+                                @else
+                                    <span class="text-neutral-400 dark:text-neutral-500">Unverified</span>
+                                @endif
+                            </flux:table.cell>
+                            <flux:table.cell class="hidden md:table-cell">{{ $user->created_at->format('M j, Y') }}</flux:table.cell>
+                            <flux:table.cell align="end">
+                                <div class="flex items-center justify-end gap-1">
+                                    <flux:button size="sm" variant="ghost" wire:click="openEditModal('{{ $user->id }}')" icon="pencil" class="opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <flux:button size="sm" variant="ghost" wire:click="confirmDelete('{{ $user->id }}')" icon="trash" class="opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 dark:hover:text-red-400" />
+                                </div>
+                            </flux:table.cell>
+                        </flux:table.row>
+                    @endforeach
+                </flux:table.rows>
+            </flux:table>
         @endif
-    </div>
 
     {{-- Create User Modal --}}
     <flux:modal wire:model="showCreateModal" name="create-user" class="min-w-sm">

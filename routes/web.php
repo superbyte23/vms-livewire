@@ -1,6 +1,7 @@
 <?php
 
-use App\Models\VisitorLog;
+use App\Models\PreRegistration;
+use App\Models\Visitor;
 use Endroid\QrCode\Builder\Builder;
 use Endroid\QrCode\Encoding\Encoding;
 use Endroid\QrCode\ErrorCorrectionLevel;
@@ -12,6 +13,8 @@ Route::livewire('/', 'pages::welcome')->name('home');
 
 Route::livewire('pre-register', 'pages::pre-register')->name('pre-register');
 
+Route::livewire('pre-register/complete/{preRegistration}', 'pages::pre-register-complete')->name('pre-register.complete');
+
 Route::get('/locale/{locale}', function (string $locale) {
     if (in_array($locale, ['en', 'es', 'ph'])) {
         session()->put('locale', $locale);
@@ -22,11 +25,19 @@ Route::get('/locale/{locale}', function (string $locale) {
 })->name('locale.switch');
 
 Route::get('/qr/{token}', function (string $token) {
-    $visitorLog = VisitorLog::where('qr_code_token', $token)->firstOrFail();
+    $data = null;
+
+    if (Visitor::where('qr_code_token', $token)->exists()) {
+        $data = route('home').'?checkout='.$token;
+    } elseif (PreRegistration::where('qr_code_token', $token)->exists()) {
+        $data = route('home').'?pre='.$token;
+    }
+
+    abort_unless($data, 404);
 
     $result = new Builder(
         writer: new PngWriter,
-        data: route('home').'?checkout='.$token,
+        data: $data,
         encoding: new Encoding('UTF-8'),
         errorCorrectionLevel: ErrorCorrectionLevel::Low,
         size: 400,

@@ -23,6 +23,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     use WithFileUploads;
 
     public int $step = 1;
+    public string $activeTab = 'checkin';
 
     // Step 1: Search or create person
     public string $search = '';
@@ -59,9 +60,11 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     public string $checkoutSearch = '';
     public ?string $pendingCheckoutId = null;
     public bool $showCheckoutModal = false;
+    public string $checkoutPhoto = '';
 
     // QR
     public bool $showQrScanner = false;
+    public bool $showPreQrScanner = false;
     public bool $showQrCheckoutModal = false;
     public ?string $pendingQrCheckoutToken = null;
 
@@ -69,31 +72,52 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     {
         $token = request()->query('checkout');
         if ($token) {
-            $visitorLog = VisitorLog::where('qr_code_token', $token)
-                ->where('status', 'checked_in')
-                ->with('visitor')
-                ->first();
-
-            if ($visitorLog) {
+            if ($this->activeLogForQrToken($token)) {
                 $this->pendingQrCheckoutToken = $token;
                 $this->showQrCheckoutModal = true;
             } else {
-                Flux::toast(variant: 'error', text: __('Invalid or already checked out QR code.'));
+                Flux::toast(variant: 'error', text: __('Invalid QR code or visitor is not on-site.'));
+            }
+
+            return;
+        }
+
+        $preToken = request()->query('pre');
+        if ($preToken) {
+            $pre = PreRegistration::pending()->where('qr_code_token', $preToken)->first();
+
+            if ($pre) {
+                $this->selectPreRegistration((string) $pre->id);
+                Flux::toast(variant: 'success', text: __('Pre-registration found. Please confirm your details.'));
+            } else {
+                Flux::toast(variant: 'error', text: __('Invalid or already used pre-registration QR code.'));
             }
         }
+    }
+
+    protected function activeLogForQrToken(?string $token): ?VisitorLog
+    {
+        if (! $token) {
+            return null;
+        }
+
+        $visitor = Visitor::where('qr_code_token', $token)->first();
+
+        if (! $visitor) {
+            return null;
+        }
+
+        return VisitorLog::with('visitor')
+            ->where('visitor_id', $visitor->id)
+            ->where('status', 'checked_in')
+            ->latest('checked_in_at')
+            ->first();
     }
 
     #[Computed]
     public function pendingQrVisitor(): ?VisitorLog
     {
-        if (! $this->pendingQrCheckoutToken) {
-            return null;
-        }
-
-        return VisitorLog::where('qr_code_token', $this->pendingQrCheckoutToken)
-            ->where('status', 'checked_in')
-            ->with('visitor')
-            ->first();
+        return $this->activeLogForQrToken($this->pendingQrCheckoutToken);
     }
 
     public function confirmQrCheckOut(): void
@@ -109,6 +133,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
         $visitorLog->update([
             'status' => 'checked_out',
             'checked_out_at' => now(),
+            'checkout_photo' => $this->checkoutPhoto ?: null,
         ]);
 
         if ($visitorLog->host_user_id && $hostUser = $visitorLog->hostUser) {
@@ -119,6 +144,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
 
         $this->pendingQrCheckoutToken = null;
         $this->showQrCheckoutModal = false;
+        $this->checkoutPhoto = '';
 
         $this->resetForm();
     }
@@ -127,16 +153,13 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     {
         $this->pendingQrCheckoutToken = null;
         $this->showQrCheckoutModal = false;
+        $this->checkoutPhoto = '';
     }
 
     public function checkOutByToken(string $token): void
     {
-        $visitorLog = VisitorLog::where('qr_code_token', $token)
-            ->where('status', 'checked_in')
-            ->first();
-
-        if (! $visitorLog) {
-            Flux::toast(variant: 'error', text: __('Invalid or already checked out QR code.'));
+        if (! $this->activeLogForQrToken($token)) {
+            Flux::toast(variant: 'error', text: __('Invalid QR code or visitor is not on-site.'));
 
             return;
         }
@@ -159,7 +182,6 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                     'name' => 'required|string|max:255',
                     'email' => 'nullable|email|max:255',
                     'phone' => 'nullable|string|max:20',
-                    'company' => 'nullable|string|max:255',
                     'validIdNumber' => 'nullable|string|max:50',
                 ]);
             } elseif (! $this->selectedVisitorId && ! $this->selectedPreRegistrationId) {
@@ -276,6 +298,23 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
         }
 
         return PreRegistration::find($this->selectedPreRegistrationId);
+    }
+
+    public function scanPreRegistrationByToken(string $token): void
+    {
+        $pre = PreRegistration::pending()->where('qr_code_token', $token)->first();
+
+        $this->showPreQrScanner = false;
+
+        if (! $pre) {
+            Flux::toast(variant: 'error', text: __('Invalid or already used pre-registration QR code.'));
+
+            return;
+        }
+
+        $this->activeTab = 'checkin';
+        $this->selectPreRegistration((string) $pre->id);
+        Flux::toast(variant: 'success', text: __('Pre-registration found. Please confirm your details.'));
     }
 
     public function changePreRegistration(): void
@@ -457,14 +496,22 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
 
         if ($this->selectedVisitorId) {
             $visitor = Visitor::findOrFail($this->selectedVisitorId);
+
+            if (! $visitor->qr_code_token) {
+                $visitor->update(['qr_code_token' => Str::random(32)]);
+            }
         } else {
+            $preQrToken = $this->selectedPreRegistration?->qr_code_token ?: Str::random(32);
+            $preIdPhoto = $this->selectedPreRegistration?->valid_id_photo;
+
             $visitor = Visitor::create([
                 'name' => $this->name,
                 'email' => $this->email ?: null,
                 'phone' => $this->phone ?: null,
                 'company' => $this->company ?: null,
                 'valid_id_number' => $this->validIdNumber ?: null,
-                'photo' => $this->photo ?: null,
+                'photo' => $this->photo ?: ($preIdPhoto ?: null),
+                'qr_code_token' => $preQrToken,
             ]);
         }
 
@@ -477,7 +524,6 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
             'purpose' => $this->purpose,
             'photo' => $this->visitPhoto ?: null,
             'badge_number' => $badgeNumber,
-            'qr_code_token' => Str::random(32),
             'status' => 'checked_in',
             'checked_in_at' => now(),
         ]);
@@ -505,10 +551,10 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     public function resetForm(): void
     {
         $this->reset(
-            'step', 'search', 'selectedVisitorId', 'selectedPreRegistrationId', 'showCreateForm',
+            'step', 'activeTab', 'search', 'selectedVisitorId', 'selectedPreRegistrationId', 'showCreateForm',
             'name', 'email', 'phone', 'company', 'validIdNumber', 'photo',
             'hostSearch', 'host', 'hostUserId', 'useCustomHost', 'purpose', 'visitPhoto',
-            'justCheckedIn', 'lastLog'
+            'justCheckedIn', 'lastLog', 'checkoutPhoto'
         );
         $this->step = 1;
     }
@@ -518,12 +564,14 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     public function confirmCheckOut(string $visitorLogId): void
     {
         $this->pendingCheckoutId = $visitorLogId;
+        $this->checkoutPhoto = '';
         $this->showCheckoutModal = true;
     }
 
     public function cancelCheckOut(): void
     {
         $this->pendingCheckoutId = null;
+        $this->checkoutPhoto = '';
         $this->showCheckoutModal = false;
     }
 
@@ -534,6 +582,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
         $visitorLog->update([
             'status' => 'checked_out',
             'checked_out_at' => now(),
+            'checkout_photo' => $this->checkoutPhoto ?: null,
         ]);
 
         if ($visitorLog->host_user_id && $hostUser = $visitorLog->hostUser) {
@@ -624,34 +673,46 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
 
 <div class="mx-auto flex min-h-svh max-w-7xl flex-col p-4 md:p-6 lg:p-8">
     <style>
+        @page {
+            size: 80mm 120mm;
+            margin: 0;
+        }
+
         @media print {
             body * { visibility: hidden; }
             #badge-print-area, #badge-print-area * { visibility: visible; }
-            #badge-print-area { position: absolute; inset: 0; }
+            #badge-print-area {
+                position: absolute;
+                inset: 0;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+            }
             .no-print { display: none !important; }
         }
     </style>
 
     {{-- Header --}}
-    <div class="no-print flex items-center justify-between border-b border-neutral-200 pb-4 dark:border-neutral-800">
-        <div class="flex items-center gap-4">
-            <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-neutral-900 text-lg font-bold text-white dark:bg-white dark:text-neutral-900">
-                VMS
+    <div class="no-print">
+        <div class="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-y-2 pb-4">
+            <div class="flex items-center gap-2">
+                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-900 text-base font-bold text-white dark:bg-white dark:text-neutral-900 sm:h-12 sm:w-12 sm:text-lg">
+                    VK
+                </div>
+                <div class="min-w-0">
+                    <h1 class="text-base font-semibold text-neutral-900 dark:text-white sm:text-lg">{{ __('Visita Kiosk') }}</h1>
+                    <p class="text-[10px] text-neutral-500 dark:text-neutral-400">{{ __('Visitor Management System') }}</p>
+                </div>
             </div>
-            <div>
-                <h1 class="text-xl font-semibold text-neutral-900 dark:text-white">{{ __('Visitor Kiosk') }}</h1>
-                <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ __('Self-service check-in and check-out') }}</p>
-            </div>
-        </div>
-        <div class="hidden items-center gap-6 sm:flex">
-            <div class="text-right">
-                <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ __('Today') }}</p>
-                <p class="text-2xl font-bold text-neutral-900 dark:text-white">{{ $this->todayCount }}</p>
-            </div>
-            <div class="h-10 w-px bg-neutral-200 dark:bg-neutral-800"></div>
-            <div class="text-right">
-                <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ __('On-site') }}</p>
-                <p class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{{ $this->onSiteCount }}</p>
+            <div class="flex items-center gap-3 sm:gap-6">
+                <div class="text-right">
+                    <p class="text-xs text-neutral-500 dark:text-neutral-400 sm:text-sm">{{ __('Today') }}</p>
+                    <p class="text-lg font-bold text-neutral-900 dark:text-white sm:text-xl">{{ $this->todayCount }}</p>
+                </div>
+                <div class="h-8 w-px bg-neutral-200 dark:bg-neutral-800 sm:h-10"></div>
+                <div class="text-right">
+                    <p class="text-xs text-neutral-500 dark:text-neutral-400 sm:text-sm">{{ __('On-site') }}</p>
+                    <p class="text-lg font-bold text-emerald-600 dark:text-emerald-400 sm:text-xl">{{ $this->onSiteCount }}</p>
+                </div>
             </div>
         </div>
     </div>
@@ -659,63 +720,93 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     {{-- Badge success view --}}
     @if ($this->justCheckedIn && $this->lastLog)
         @php $visitor = $this->lastLog->visitor; @endphp
-        <div class="mt-6 flex-1 flex items-center justify-center">
-            <div class="w-full max-w-lg rounded-xl border border-neutral-200 bg-white p-8 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-                <div class="no-print text-center">
-                    <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                        <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+        <div class="flex flex-1 items-center justify-center p-3 sm:p-6">
+            <div class="w-full max-w-sm overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+                {{-- Success header --}}
+                <div class="no-print bg-gradient-to-br from-emerald-500 to-emerald-600 px-4 py-4 text-center">
+                    <div class="mx-auto mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
                     </div>
-                    <h2 class="text-2xl font-bold text-neutral-900 dark:text-white">{{ __('Checked In!') }}</h2>
-                    <p class="mt-1 text-neutral-500 dark:text-neutral-400">{{ __('Welcome, :name.', ['name' => $visitor->name]) }}</p>
+                    <h2 class="text-base font-bold text-white">{{ __('Checked In!') }}</h2>
+                    <p class="text-sm text-emerald-50/90">{{ __('Welcome, :name.', ['name' => $visitor->name]) }}</p>
                 </div>
 
-                <div id="badge-print-area" class="mt-6 rounded-lg border-2 border-dashed border-neutral-200 bg-neutral-50 p-6 dark:border-neutral-700 dark:bg-neutral-800/50">
-                    <div class="text-center">
-                        <p class="text-xs font-semibold uppercase tracking-widest text-neutral-400 dark:text-neutral-500">{{ __('Visitor Badge') }}</p>
-                        <p class="mt-1 text-lg font-bold text-neutral-900 dark:text-white">{{ $this->lastLog->badge_number }}</p>
-                    </div>
-
-                    @if ($this->lastLog->photo)
-                        <img src="{{ $this->lastLog->photo }}" alt="Visitor photo" class="mx-auto mt-4 h-32 w-32 rounded-full object-cover border-2 border-neutral-200 dark:border-neutral-700">
-                    @elseif ($visitor->photo)
-                        <img src="{{ $visitor->photo }}" alt="Visitor photo" class="mx-auto mt-4 h-32 w-32 rounded-full object-cover border-2 border-neutral-200 dark:border-neutral-700">
-                    @endif
-
-                    <div class="mt-4 space-y-2 text-center">
-                        <p class="text-xl font-semibold text-neutral-900 dark:text-white">{{ $visitor->name }}</p>
-                        @if ($visitor->company)
-                            <p class="text-neutral-500 dark:text-neutral-400">{{ $visitor->company }}</p>
-                        @endif
-                        @if ($this->lastLog->host)
-                            <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ __('Visiting: ') }}<span class="font-medium text-neutral-700 dark:text-neutral-300">{{ $this->lastLog->host }}</span></p>
-                        @endif
-                        <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $this->lastLog->checked_in_at->format('g:i A, M j, Y') }}</p>
-                    </div>
-
-                    @if ($this->lastLog->qr_code_token)
-                        <div class="mt-4 flex justify-center">
-                            <img src="{{ route('qr.code', $this->lastLog->qr_code_token) }}" alt="QR Code" class="h-24 w-24">
+                {{-- Badge --}}
+                <div class="p-4">
+                    <div id="badge-print-area" class="rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-800 dark:bg-emerald-900/10">
+                        <div class="flex items-center justify-between">
+                            <p class="text-[11px] font-semibold uppercase tracking-widest text-neutral-400 dark:text-neutral-500">{{ __('Visitor Badge') }}</p>
+                            <span class="rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">{{ $this->lastLog->badge_number }}</span>
                         </div>
-                    @endif
-                </div>
 
-                <div class="no-print mt-6 flex gap-3">
-                    <flux:button variant="primary" class="flex-1 !py-3" onclick="window.print()">
-                        {{ __('Print Badge') }}
-                    </flux:button>
-                    <flux:button variant="ghost" class="flex-1 !py-3" wire:click="resetForm">
-                        {{ __('Check In Another') }}
-                    </flux:button>
+                        @if ($this->lastLog->photo)
+                            <img src="{{ $this->lastLog->photo }}" alt="Visitor photo" class="mx-auto mt-3 h-24 w-24 rounded-full object-cover border-2 border-emerald-200 dark:border-emerald-800">
+                        @elseif ($visitor->photo)
+                            <img src="{{ $visitor->photo }}" alt="Visitor photo" class="mx-auto mt-3 h-24 w-24 rounded-full object-cover border-2 border-emerald-200 dark:border-emerald-800">
+                        @endif
+
+                        <div class="mt-2 space-y-0.5 text-center">
+                            <p class="text-lg font-semibold text-neutral-900 dark:text-white">{{ $visitor->name }}</p>
+                            @if ($visitor->company)
+                                <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $visitor->company }}</p>
+                            @endif
+                            @if ($this->lastLog->host)
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ __('Visiting: ') }}<span class="font-medium text-neutral-700 dark:text-neutral-300">{{ $this->lastLog->host }}</span></p>
+                            @endif
+                            <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ $this->lastLog->checked_in_at->format('g:i A, M j, Y') }}</p>
+                        </div>
+
+                        @if ($visitor->qr_code_token)
+                            <div class="mt-3 flex justify-center">
+                                <img src="{{ route('qr.code', $visitor->qr_code_token) }}" alt="QR Code" class="h-20 w-20">
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="no-print mt-3 flex gap-2">
+                        <flux:button variant="primary" class="flex-1 !py-2.5 text-sm" onclick="window.print()">
+                            {{ __('Print Badge') }}
+                        </flux:button>
+                        <flux:button variant="ghost" class="flex-1 !py-2.5 text-sm" wire:click="resetForm">
+                            {{ __('Check In Another') }}
+                        </flux:button>
+                    </div>
                 </div>
             </div>
         </div>
     @else
         {{-- Main content --}}
-        <div class="mt-6 grid flex-1 gap-6 lg:grid-cols-5">
-            {{-- Check-in wizard --}}
-            <div class="lg:col-span-2">
+        <div class="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6" x-data="{ activeTab: 'checkin' }">
+            {{-- Segmented tabs (Flux segmented style, built from scratch) --}}
+            <div class="no-print mx-auto grid w-full max-w-sm grid-cols-2 gap-0.5 rounded-lg bg-neutral-100 p-1 dark:bg-neutral-800">
+                <button type="button" x-on:click="activeTab = 'checkin'"
+                    class="flex h-8 items-center justify-center gap-1 whitespace-nowrap rounded px-2.5 text-xs font-medium transition-all"
+                    x-bind:class="activeTab === 'checkin'
+                        ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-900 dark:text-white'
+                        : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'">
+                    <flux:icon.arrow-right-circle class="h-3.5 w-3.5 shrink-0" />
+                    {{ __('Check In') }}
+                </button>
+
+                <button type="button" x-on:click="activeTab = 'onsite'"
+                    class="flex h-8 items-center justify-center gap-1 whitespace-nowrap rounded px-2.5 text-xs font-medium transition-all"
+                    x-bind:class="activeTab === 'onsite'
+                        ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-900 dark:text-white'
+                        : 'text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white'">
+                    <flux:icon.building-office-2 class="h-3.5 w-3.5 shrink-0" />
+                    {{ __('On-Site Visitors') }}
+                    <span class="whitespace-nowrap rounded-full px-1 py-0 text-[9px] font-bold"
+                        x-bind:class="activeTab === 'onsite'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                            : 'bg-neutral-200 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300'">{{ $this->onSiteCount }}</span>
+                </button>
+            </div>
+
+            <div x-show="activeTab === 'checkin'">
+                {{-- Check-in wizard --}}
+                <div class="w-full">
                 <div class="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-                    <h2 class="text-xl font-semibold text-neutral-900 dark:text-white">{{ __('Check In') }}</h2>
+                    <h2 class="text-lg font-semibold text-neutral-900 dark:text-white">{{ __('Check In') }}</h2>
 
                     {{-- Step indicator --}}
                     <div class="mt-4 flex items-center gap-2 text-sm">
@@ -758,11 +849,11 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                         </div>
                                     </div>
                                 </div>
-                                <div class="mt-4 flex gap-2">
-                                    <flux:button variant="primary" icon:trailing="arrow-up-right" wire:click="nextStep">
+                                <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+                                    <flux:button variant="primary" icon:trailing="arrow-up-right" class="w-full sm:w-auto" wire:click="nextStep">
                                         {{ __('Yes, its me') }}
                                     </flux:button>
-                                    <flux:button variant="ghost" class="!py-3" wire:click="changePreRegistration">
+                                    <flux:button variant="ghost" class="!py-3 w-full sm:w-auto" wire:click="changePreRegistration">
                                         {{ __('Not me') }}
                                     </flux:button>
                                 </div>
@@ -773,16 +864,16 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                 <div class="rounded-lg border border-neutral-100 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-800/50">
                                     <div class="flex items-center gap-4">
                                         @if ($this->selectedVisitor->photo)
-                                            <img src="{{ $this->selectedVisitor->photo }}" alt="" class="h-14 w-14 rounded-full object-cover border border-neutral-200 dark:border-neutral-700">
+                                            <img src="{{ $this->selectedVisitor->photo }}" alt="" class="h-14 w-14 shrink-0 rounded-full object-cover border border-neutral-200 dark:border-neutral-700">
                                         @else
-                                            <div class="flex h-14 w-14 items-center justify-center rounded-full bg-neutral-100 text-lg font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                                            <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-lg font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
                                                 {{ substr($this->selectedVisitor->name, 0, 2) }}
                                             </div>
                                         @endif
-                                        <div>
-                                            <p class="font-semibold text-neutral-900 dark:text-white">{{ $this->selectedVisitor->name }}</p>
-                                            @if ($this->selectedVisitor->email)
-                                                <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ $this->selectedVisitor->email }}</p>
+                                        <div class="min-w-0">
+                                            <p class="break-words font-semibold text-neutral-900 dark:text-white">{{ $this->selectedVisitor->name }}</p>
+                                            @if ($this->selectedVisitor->email && $this->selectedVisitor->email !== $this->selectedVisitor->name)
+                                                <p class="truncate text-sm text-neutral-500 dark:text-neutral-400">{{ $this->selectedVisitor->email }}</p>
                                             @endif
                                             @if ($this->selectedVisitor->valid_id_number)
                                                 <p class="text-xs text-neutral-400 dark:text-neutral-500">ID: {{ $this->selectedVisitor->valid_id_number }}</p>
@@ -790,11 +881,11 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                         </div>
                                     </div>
                                 </div>
-                                <div class="mt-4 flex gap-2">
-                                    <flux:button variant="primary" class="flex-1 !py-3 text-base" wire:click="nextStep">
-                                        {{ __('Yes, it\u2019s me') }} &rarr;
+                                <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+                                    <flux:button variant="primary" icon:trailing="arrow-up-right" class="w-full sm:w-auto" wire:click="nextStep">
+                                        {{ __('Yes, its me') }}
                                     </flux:button>
-                                    <flux:button variant="ghost" class="!py-3" wire:click="changeVisitor">
+                                    <flux:button variant="ghost" class="!py-3 w-full sm:w-auto" wire:click="changeVisitor">
                                         {{ __('Not me') }}
                                     </flux:button>
                                 </div>
@@ -889,7 +980,57 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                 {{-- Search first --}}
                                 <p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Search for your name or scan your badge.') }}</p>
                                 <div class="space-y-4">
-                                    <flux:input wire:model.live.debounce.300ms="search" placeholder="{{ __('Search by name, email, phone, or ID...') }}" icon="magnifying-glass" />
+                                    <div class="flex gap-2">
+                                        <flux:input wire:model.live.debounce.300ms="search" placeholder="{{ __('Search by name, email, phone, or ID...') }}" icon="magnifying-glass" class="flex-1" />
+                                        @if (! $this->showPreQrScanner)
+                                            <flux:button variant="outline" wire:click="$set('showPreQrScanner', true)" icon="qr-code-scan" class="shrink-0" title="{{ __('Scan pre-registration QR') }}" aria-label="{{ __('Scan pre-registration QR') }}" />
+                                        @endif
+                                    </div>
+
+                                    @if ($this->showPreQrScanner)
+                                        <div class="rounded-lg border border-emerald-200 p-4 dark:border-emerald-800"
+                                             x-data="{
+                                                 reader: null,
+                                                 init() {
+                                                     this.$nextTick(() => this.startScanner());
+                                                 },
+                                                 startScanner() {
+                                                     if (typeof Html5Qrcode === 'undefined') return;
+                                                     this.reader = new Html5Qrcode('pre-qr-reader');
+                                                     this.reader.start(
+                                                         { facingMode: 'environment' },
+                                                         { fps: 10, qrbox: { width: 250, height: 250 } },
+                                                         (decodedText) => {
+                                                             try {
+                                                                 const url = new URL(decodedText);
+                                                                 const token = url.searchParams.get('pre');
+                                                                 if (token) {
+                                                                     this.reader.stop().catch(() => {});
+                                                                     this.reader = null;
+                                                                     $wire.scanPreRegistrationByToken(token);
+                                                                 }
+                                                             } catch {}
+                                                         },
+                                                     ).catch(() => {});
+                                                 },
+                                                 destroy() {
+                                                     if (this.reader) {
+                                                         this.reader.stop().catch(() => {});
+                                                     }
+                                                 }
+                                             }">
+                                            <div class="mb-2 flex items-center justify-between">
+                                                <p class="text-sm font-medium text-neutral-900 dark:text-white">{{ __('Scan Pre-Registration QR') }}</p>
+                                                <flux:button size="sm" variant="ghost" x-on:click="destroy(); $wire.$set('showPreQrScanner', false)">
+                                                    {{ __('Close') }}
+                                                </flux:button>
+                                            </div>
+                                            <div id="pre-qr-reader" class="mx-auto max-w-sm overflow-hidden rounded-lg"></div>
+                                            <p class="mt-2 text-center text-xs text-neutral-400 dark:text-neutral-500">
+                                                {{ __('Point the pre-registration QR code at the camera') }}
+                                            </p>
+                                        </div>
+                                    @endif
 
                                     @if ($this->search !== '' && $this->searchResults->isNotEmpty())
                                         <div class="max-h-64 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700">
@@ -908,7 +1049,6 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                                             {{ $person->company ?: '' }}{{ $person->company && $person->valid_id_number ? ' · ' : '' }}{{ $person->valid_id_number ?: '' }}
                                                         </p>
                                                     </div>
-                                                    <flux:button size="sm" variant="outline">{{ __('Select') }}</flux:button>
                                                 </button>
                                             @endforeach
                                         </div>
@@ -930,7 +1070,6 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                                             {{ $pre->host ? __('Visiting: ') . $pre->host : '' }}{{ $pre->purpose ? ' · ' . $pre->purpose : '' }}
                                                         </p>
                                                     </div>
-                                                    <flux:button size="sm" variant="outline">{{ __('Select') }}</flux:button>
                                                 </button>
                                             @endforeach
                                         </div>
@@ -1123,21 +1262,21 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                         @endif
                     </div>
                 </div>
+                </div>
             </div>
 
-            {{-- On-site visitors --}}
-            <div class="lg:col-span-3">
+            <div x-show="activeTab === 'onsite'">
+                {{-- On-site visitors --}}
+                <div class="w-full">
                 <div class="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-                    <h2 class="mb-1 text-xl font-semibold text-neutral-900 dark:text-white">{{ __('On-Site Visitors') }}</h2>
+                    <h2 class="mb-1 text-lg font-semibold text-neutral-900 dark:text-white">{{ __('On-Site Visitors') }}</h2>
                     <p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Find your name and check out when leaving.') }}</p>
 
                     <div class="mb-4 flex gap-2">
                         <flux:input wire:model.live="checkoutSearch" placeholder="{{ __('Search by name or host...') }}" icon="magnifying-glass" class="flex-1" />
 
                         @if (! $this->showQrScanner)
-                            <flux:button variant="outline" wire:click="$set('showQrScanner', true)" icon="camera" class="shrink-0">
-                                {{ __('Scan QR') }}
-                            </flux:button>
+                            <flux:button variant="outline" wire:click="$set('showQrScanner', true)" icon="qr-code-scan" class="shrink-0" title="{{ __('Scan QR') }}" aria-label="{{ __('Scan QR') }}" />
                         @endif
                     </div>
 
@@ -1179,7 +1318,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                     {{ __('Close') }}
                                 </flux:button>
                             </div>
-                            <div id="qr-reader" class="mx-auto max-w-xs overflow-hidden rounded-lg"></div>
+                            <div id="qr-reader" class="mx-auto max-w-sm overflow-hidden rounded-lg"></div>
                             <p class="mt-2 text-center text-xs text-neutral-400 dark:text-neutral-500">
                                 {{ __('Point your badge QR code at the camera') }}
                             </p>
@@ -1213,9 +1352,12 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                         <tr class="group" wire:key="{{ $visitorLog->id }}">
                                             <td class="py-4 pr-4">
                                                 <span class="font-medium text-neutral-900 dark:text-white">{{ $v->name }}</span>
-                                                @if ($visitorLog->badge_number || $v->company)
+                                                @if ($v->company)
                                                     <div class="text-xs text-neutral-400 dark:text-neutral-500">
-                                                        {{ $visitorLog->badge_number }}{{ $v->company ? ' &middot; ' . $v->company : '' }}
+                                                        {{ $v->company }}
+                                                        @if ($visitorLog->badge_number)
+                                                            {{ ' · ' . __('Badge #') . Str::afterLast($visitorLog->badge_number, '-') }}
+                                                        @endif
                                                     </div>
                                                 @endif
                                             </td>
@@ -1236,17 +1378,72 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                         </div>
                     @endif
                 </div>
+                </div>
             </div>
         </div>
     @endif
 
     {{-- Check-out confirmation modal --}}
-    <flux:modal wire:model="showCheckoutModal" name="checkout-confirm" class="min-w-sm">
+    <flux:modal wire:model="showCheckoutModal" name="checkout-confirm" class="w-full sm:min-w-sm">
         @if ($this->pendingVisitor)
             <flux:heading size="lg">{{ __('Confirm Check Out') }}</flux:heading>
             <flux:text class="mt-2">
                 {{ __('Confirm that :name is leaving the premises.', ['name' => $this->pendingVisitor->visitor->name]) }}
             </flux:text>
+            <div class="mt-5 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-4 text-center dark:border-neutral-700 dark:bg-neutral-800/50"
+                 x-data="{
+                     photo: @entangle('checkoutPhoto'),
+                     stream: null,
+                     cameraActive: false,
+                     videoReady: false,
+                     async startCamera() {
+                         try {
+                             this.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'environment' } });
+                             const video = this.$refs.checkoutVideo;
+                             video.srcObject = this.stream;
+                             video.onloadedmetadata = () => { video.play(); this.videoReady = true; };
+                             this.cameraActive = true;
+                         } catch (e) { alert('Camera error: ' + e.message); }
+                     },
+                     capture() {
+                         const video = this.$refs.checkoutVideo;
+                         const canvas = this.$refs.checkoutCanvas;
+                         canvas.width = video.videoWidth || 640;
+                         canvas.height = video.videoHeight || 480;
+                         canvas.getContext('2d').drawImage(video, 0, 0);
+                         this.photo = canvas.toDataURL('image/jpeg', 0.8);
+                         this.stopCamera();
+                     },
+                     stopCamera() {
+                         if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
+                         this.cameraActive = false; this.videoReady = false;
+                     },
+                     clearPhoto() { this.photo = ''; },
+                     destroy() { this.stopCamera(); }
+                 }">
+                <div x-show="!cameraActive && !photo">
+                    <svg class="mx-auto h-8 w-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <p class="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Capture a photo on check out (optional)') }}</p>
+                    <flux:button variant="primary" size="sm" class="mt-2" x-on:click="startCamera()">{{ __('Capture Checkout Photo') }}</flux:button>
+                </div>
+                <div x-show="cameraActive">
+                    <video x-ref="checkoutVideo" autoplay playsinline class="mx-auto max-h-48 rounded-lg"></video>
+                    <div class="mt-3 flex gap-2 justify-center">
+                        <flux:button variant="primary" x-on:click="capture()" x-bind:disabled="!videoReady">{{ __('Capture') }}</flux:button>
+                        <flux:button variant="ghost" x-on:click="stopCamera()">{{ __('Cancel') }}</flux:button>
+                    </div>
+                </div>
+                <div x-show="photo">
+                    <div class="flex items-center gap-3 justify-center">
+                        <img :src="photo" alt="Checkout photo" class="h-16 w-16 rounded-lg object-cover border border-neutral-300">
+                        <div class="text-left">
+                            <p class="text-sm font-medium text-emerald-600">{{ __('Checkout photo captured') }}</p>
+                            <button type="button" x-on:click="clearPhoto()" class="text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300">{{ __('Remove') }}</button>
+                        </div>
+                    </div>
+                </div>
+                <canvas x-ref="checkoutCanvas" class="hidden"></canvas>
+            </div>
             <div class="mt-6 flex gap-2 justify-end">
                 <flux:button variant="ghost" x-on:click="$flux.modal('checkout-confirm').close(); $wire.cancelCheckOut()">
                     {{ __('Cancel') }}
@@ -1260,12 +1457,66 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
 
     {{-- QR check-out confirmation modal --}}
     @if ($this->pendingQrCheckoutToken)
-        <flux:modal wire:model="showQrCheckoutModal" name="qr-checkout-confirm" class="min-w-sm">
+        <flux:modal wire:model="showQrCheckoutModal" name="qr-checkout-confirm" class="w-full sm:min-w-sm">
             @if ($this->pendingQrVisitor)
                 <flux:heading size="lg">{{ __('Confirm Check Out') }}</flux:heading>
                 <flux:text class="mt-2">
                     {{ __('A QR code was scanned for :name. Confirm they are leaving the premises.', ['name' => $this->pendingQrVisitor->visitor->name]) }}
                 </flux:text>
+                <div class="mt-5 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-4 text-center dark:border-neutral-700 dark:bg-neutral-800/50"
+                     x-data="{
+                         photo: @entangle('checkoutPhoto'),
+                         stream: null,
+                         cameraActive: false,
+                         videoReady: false,
+                         async startCamera() {
+                             try {
+                                 this.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'environment' } });
+                                 const video = this.$refs.qrVideo;
+                                 video.srcObject = this.stream;
+                                 video.onloadedmetadata = () => { video.play(); this.videoReady = true; };
+                                 this.cameraActive = true;
+                             } catch (e) { alert('Camera error: ' + e.message); }
+                         },
+                         capture() {
+                             const video = this.$refs.qrVideo;
+                             const canvas = this.$refs.qrCanvas;
+                             canvas.width = video.videoWidth || 640;
+                             canvas.height = video.videoHeight || 480;
+                             canvas.getContext('2d').drawImage(video, 0, 0);
+                             this.photo = canvas.toDataURL('image/jpeg', 0.8);
+                             this.stopCamera();
+                         },
+                         stopCamera() {
+                             if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
+                             this.cameraActive = false; this.videoReady = false;
+                         },
+                         clearPhoto() { this.photo = ''; },
+                         destroy() { this.stopCamera(); }
+                     }">
+                    <div x-show="!cameraActive && !photo">
+                        <svg class="mx-auto h-8 w-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        <p class="mt-2 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Capture a photo on check out (optional)') }}</p>
+                        <flux:button variant="primary" size="sm" class="mt-2" x-on:click="startCamera()">{{ __('Capture Checkout Photo') }}</flux:button>
+                    </div>
+                    <div x-show="cameraActive">
+                        <video x-ref="qrVideo" autoplay playsinline class="mx-auto max-h-48 rounded-lg"></video>
+                        <div class="mt-3 flex gap-2 justify-center">
+                            <flux:button variant="primary" x-on:click="capture()" x-bind:disabled="!videoReady">{{ __('Capture') }}</flux:button>
+                            <flux:button variant="ghost" x-on:click="stopCamera()">{{ __('Cancel') }}</flux:button>
+                        </div>
+                    </div>
+                    <div x-show="photo">
+                        <div class="flex items-center gap-3 justify-center">
+                            <img :src="photo" alt="Checkout photo" class="h-16 w-16 rounded-lg object-cover border border-neutral-300">
+                            <div class="text-left">
+                                <p class="text-sm font-medium text-emerald-600">{{ __('Checkout photo captured') }}</p>
+                                <button type="button" x-on:click="clearPhoto()" class="text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300">{{ __('Remove') }}</button>
+                            </div>
+                        </div>
+                    </div>
+                    <canvas x-ref="qrCanvas" class="hidden"></canvas>
+                </div>
                 <div class="mt-6 flex gap-2 justify-end">
                     <flux:button variant="ghost" x-on:click="$flux.modal('qr-checkout-confirm').close(); $wire.cancelQrCheckOut()">
                         {{ __('Cancel') }}
@@ -1279,7 +1530,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     @endif
 
     {{-- ID Scan Modal --}}
-    <flux:modal wire:model="showIdScanModal" name="id-scan" class="min-w-md">
+    <flux:modal wire:model="showIdScanModal" name="id-scan" class="w-full sm:min-w-md">
         <flux:heading size="lg">{{ __('Scan ID Card') }}</flux:heading>
         <flux:text class="mt-2">
             {{ __("Upload a photo of your driver's license or ID card to automatically fill your details.") }}

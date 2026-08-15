@@ -291,73 +291,85 @@ new #[Title('Pre-Registrations')] #[Layout('layouts::app')] class extends Compon
     </div>
 
     {{-- Table --}}
-    <div class="overflow-hidden rounded-xl border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900">
-        @if ($this->preRegistrations->isEmpty())
+    @if ($this->preRegistrations->isEmpty())
             <div class="flex flex-col items-center justify-center py-16 text-center">
                 <p class="text-neutral-400 dark:text-neutral-500">
                     {{ $this->search || $this->statusFilter ? 'No pre-registrations match your filters.' : 'No pre-registrations yet.' }}
                 </p>
             </div>
         @else
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead>
-                        <tr class="border-b border-neutral-100 text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
-                            <th class="px-5 py-3 font-medium">Name</th>
-                            <th class="px-5 py-3 font-medium hidden sm:table-cell">Host</th>
-                            <th class="px-5 py-3 font-medium hidden md:table-cell">Purpose</th>
-                            <th class="px-5 py-3 font-medium hidden lg:table-cell">Expected</th>
-                            <th class="px-5 py-3 font-medium">Status</th>
-                            <th class="px-5 py-3 font-medium hidden xl:table-cell">Created</th>
-                            <th class="px-5 py-3 font-medium text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800">
-                        @foreach ($this->preRegistrations as $pre)
-                            <tr class="group" wire:key="{{ $pre->id }}">
-                                <td class="px-5 py-3">
-                                    <div class="flex items-center gap-3">
-                                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
-                                            {{ substr($pre->name, 0, 2) }}
-                                        </div>
-                                        <div>
-                                            <span class="font-medium text-neutral-900 dark:text-white">{{ $pre->name }}</span>
-                                            @if ($pre->company)
-                                                <div class="text-xs text-neutral-400 dark:text-neutral-500">{{ $pre->company }}</div>
-                                            @endif
-                                        </div>
-                                    </div>
-                                </td>
-                                <td class="px-5 py-3 text-neutral-600 dark:text-neutral-300 hidden sm:table-cell">{{ $pre->host ?: '—' }}</td>
-                                <td class="px-5 py-3 text-neutral-500 dark:text-neutral-400 hidden md:table-cell max-w-48 truncate">{{ $pre->purpose ?: '—' }}</td>
-                                <td class="px-5 py-3 text-neutral-500 dark:text-neutral-400 hidden lg:table-cell">{{ $pre->expected_date?->format('M j, Y') ?: '—' }}</td>
-                                <td class="px-5 py-3">
-                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {{ $this->statusBadgeClasses($pre->status) }}">
-                                        {{ $this->statusLabel($pre->status) }}
-                                    </span>
-                                </td>
-                                <td class="px-5 py-3 text-neutral-500 dark:text-neutral-400 hidden xl:table-cell">{{ $pre->created_at->format('M j, Y') }}</td>
-                                <td class="px-5 py-3 text-right">
-                                    <div class="flex items-center justify-end gap-1">
-                                        <flux:button size="sm" variant="ghost" wire:click="viewPreRegistration('{{ $pre->id }}')" icon="eye" title="View" />
-                                        <flux:button size="sm" variant="ghost" wire:click="openEditModal('{{ $pre->id }}')" icon="pencil" title="Edit" />
-                                        @if ($pre->status === 'pending')
-                                            <flux:button size="sm" variant="ghost" wire:click="confirmCancel('{{ $pre->id }}')" icon="x-circle" class="text-amber-500 hover:text-amber-700 dark:hover:text-amber-400" title="Cancel" />
-                                        @endif
-                                        <flux:button size="sm" variant="ghost" wire:click="confirmDelete('{{ $pre->id }}')" icon="trash" class="text-red-500 hover:text-red-700 dark:hover:text-red-400" title="Delete" />
-                                    </div>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
+            <flux:table :paginate="$this->preRegistrations">
+                <flux:table.columns>
+                    <flux:table.column>Name</flux:table.column>
+                    <flux:table.column class="hidden sm:table-cell">Host</flux:table.column>
+                    <flux:table.column class="hidden md:table-cell">Purpose</flux:table.column>
+                    <flux:table.column class="hidden lg:table-cell">Expected</flux:table.column>
+                    <flux:table.column>Status</flux:table.column>
+                    <flux:table.column class="hidden md:table-cell">QR</flux:table.column>
+                    <flux:table.column class="hidden xl:table-cell">Created</flux:table.column>
+                    <flux:table.column align="end">Actions</flux:table.column>
+                </flux:table.columns>
 
-            <div class="border-t border-neutral-100 px-5 py-3 dark:border-neutral-800">
-                {{ $this->preRegistrations->links() }}
-            </div>
+                <flux:table.rows>
+                    @foreach ($this->preRegistrations as $pre)
+                        <flux:table.row :key="$pre->id">
+                            <flux:table.cell variant="strong">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                                        {{ substr($pre->name, 0, 2) }}
+                                    </div>
+                                    <div>
+                                        <span>{{ $pre->name }}</span>
+                                        @if ($pre->company)
+                                            <div class="text-xs text-zinc-500">{{ $pre->company }}</div>
+                                        @endif
+                                    </div>
+                                </div>
+                            </flux:table.cell>
+                            <flux:table.cell class="hidden sm:table-cell">{{ $pre->host ?: '—' }}</flux:table.cell>
+                            <flux:table.cell class="hidden md:table-cell max-w-48 truncate">{{ $pre->purpose ?: '—' }}</flux:table.cell>
+                            <flux:table.cell class="hidden lg:table-cell">{{ $pre->expected_date?->format('M j, Y') ?: '—' }}</flux:table.cell>
+                            <flux:table.cell class="py-0">
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {{ $this->statusBadgeClasses($pre->status) }}">
+                                    {{ $this->statusLabel($pre->status) }}
+                                </span>
+                            </flux:table.cell>
+                            <flux:table.cell class="hidden md:table-cell">
+                                @if ($pre->qr_code_token)
+                                    <img src="{{ route('qr.code', $pre->qr_code_token) }}" alt="QR Code" class="h-10 w-10 rounded border border-neutral-200 object-cover dark:border-neutral-700">
+                                @else
+                                    <span class="text-neutral-300 dark:text-neutral-600">—</span>
+                                @endif
+                            </flux:table.cell>
+                            <flux:table.cell class="hidden xl:table-cell">{{ $pre->created_at->format('M j, Y') }}</flux:table.cell>
+                            <flux:table.cell align="end">
+                                <flux:dropdown position="bottom" align="end">
+                                    <flux:button size="sm" variant="ghost" icon="ellipsis-horizontal" class="cursor-pointer" />
+                                    <flux:menu>
+                                        <flux:menu.item icon="eye" wire:click="viewPreRegistration('{{ $pre->id }}')">
+                                            View
+                                        </flux:menu.item>
+                                        <flux:menu.item icon="pencil" wire:click="openEditModal('{{ $pre->id }}')">
+                                            Edit
+                                        </flux:menu.item>
+                                        @if ($pre->status === 'pending')
+                                            <flux:menu.separator />
+                                            <flux:menu.item icon="x-circle" wire:click="confirmCancel('{{ $pre->id }}')" class="text-amber-500">
+                                                Cancel
+                                            </flux:menu.item>
+                                        @endif
+                                        <flux:menu.separator />
+                                        <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete('{{ $pre->id }}')">
+                                            Delete
+                                        </flux:menu.item>
+                                    </flux:menu>
+                                </flux:dropdown>
+                            </flux:table.cell>
+                        </flux:table.row>
+                    @endforeach
+                </flux:table.rows>
+            </flux:table>
         @endif
-    </div>
 
     {{-- Create Modal --}}
     <flux:modal wire:model="showCreateModal" name="create-pre-registration" class="min-w-sm">
@@ -477,10 +489,27 @@ new #[Title('Pre-Registrations')] #[Layout('layouts::app')] class extends Compon
                     </div>
                 </div>
 
+                @if ($this->viewingPreRegistration->valid_id_photo)
+                    <div>
+                        <flux:text variant="label">Valid ID</flux:text>
+                        <img src="{{ $this->viewingPreRegistration->valid_id_photo }}" alt="Valid ID" class="mt-1 h-32 w-48 rounded-lg border border-neutral-200 object-cover dark:border-neutral-700">
+                    </div>
+                @endif
+
                 @if ($this->viewingPreRegistration->notes)
                     <div>
                         <flux:text variant="label">Notes</flux:text>
                         <flux:text class="mt-1 whitespace-pre-wrap">{{ $this->viewingPreRegistration->notes }}</flux:text>
+                    </div>
+                @endif
+
+                @if ($this->viewingPreRegistration->status === 'pending' && $this->viewingPreRegistration->qr_code_token)
+                    <div class="pt-2 text-center">
+                        <flux:text variant="label">QR Code</flux:text>
+                        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Scan this at the kiosk to pre-fill check-in.</p>
+                        <div class="mx-auto mt-3 inline-block rounded-xl border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-900">
+                            <img src="{{ route('qr.code', $this->viewingPreRegistration->qr_code_token) }}" alt="Pre-registration QR Code" class="h-36 w-36">
+                        </div>
                     </div>
                 @endif
             </div>

@@ -26,16 +26,16 @@ class VisitorCheckedIn extends Notification implements ShouldQueue
         $visitor = $this->visitorLog->visitor;
 
         return (new MailMessage)
-            ->subject('Visitor Check-In: ' . $visitor->name)
-            ->greeting('Hello ' . $notifiable->name . ',')
+            ->subject('Visitor Check-In: '.$visitor->name)
+            ->greeting('Hello '.$notifiable->name.',')
             ->line('A visitor has checked in to see you.')
-            ->line('**Name:** ' . $visitor->name)
-            ->line('**Company:** ' . ($visitor->company ?: 'N/A'))
-            ->line('**Email:** ' . ($visitor->email ?: 'N/A'))
-            ->line('**Phone:** ' . ($visitor->phone ?: 'N/A'))
-            ->line('**Purpose:** ' . ($this->visitorLog->purpose ?: 'N/A'))
-            ->line('**Badge:** ' . $this->visitorLog->badge_number)
-            ->line('**Checked in at:** ' . ($this->visitorLog->checked_in_at ? $this->visitorLog->checked_in_at->format('M j, Y g:i A') : 'N/A'))
+            ->line('**Name:** '.$visitor->name)
+            ->line('**Company:** '.($visitor->company ?: 'N/A'))
+            ->line('**Email:** '.($visitor->email ?: 'N/A'))
+            ->line('**Phone:** '.($visitor->phone ?: 'N/A'))
+            ->line('**Purpose:** '.($this->visitorLog->purpose ?: 'N/A'))
+            ->line('**Badge:** '.$this->visitorLog->badge_number)
+            ->line('**Checked in at:** '.($this->visitorLog->checked_in_at ? $this->visitorLog->checked_in_at->format('M j, Y g:i A') : 'N/A'))
             ->action('View Visitor Log', url('/visitors'))
             ->line('Thank you!');
     }
@@ -50,7 +50,7 @@ class VisitorCheckedIn extends Notification implements ShouldQueue
             'visitor_company' => $visitor->company,
             'badge_number' => $this->visitorLog->badge_number,
             'checked_in_at' => $this->visitorLog->checked_in_at?->toIso8601String(),
-            'message' => $visitor->name . ' has checked in to see you.',
+            'message' => $visitor->name.' has checked in to see you.',
         ];
     }
 

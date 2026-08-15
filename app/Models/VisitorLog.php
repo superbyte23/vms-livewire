@@ -19,6 +19,7 @@ class VisitorLog extends Model
         'host_user_id',
         'purpose',
         'photo',
+        'checkout_photo',
         'badge_number',
         'qr_code_token',
         'status',

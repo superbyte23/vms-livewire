@@ -26,14 +26,14 @@ class VisitorFlagged extends Notification implements ShouldQueue
         $visitor = $this->visitorLog->visitor;
 
         return (new MailMessage)
-            ->subject('⚠️ Flagged Visitor Alert: ' . $visitor->name)
+            ->subject('⚠️ Flagged Visitor Alert: '.$visitor->name)
             ->greeting('Alert: Watchlist Match')
             ->line('A flagged visitor has checked in.')
-            ->line('**Name:** ' . $visitor->name)
-            ->line('**Company:** ' . ($visitor->company ?: 'N/A'))
-            ->line('**Badge:** ' . $this->visitorLog->badge_number)
-            ->line('**Checked in at:** ' . ($this->visitorLog->checked_in_at ? $this->visitorLog->checked_in_at->format('M j, Y g:i A') : 'N/A'))
-            ->line('**Notes:** ' . ($visitor->notes ?: 'None'))
+            ->line('**Name:** '.$visitor->name)
+            ->line('**Company:** '.($visitor->company ?: 'N/A'))
+            ->line('**Badge:** '.$this->visitorLog->badge_number)
+            ->line('**Checked in at:** '.($this->visitorLog->checked_in_at ? $this->visitorLog->checked_in_at->format('M j, Y g:i A') : 'N/A'))
+            ->line('**Notes:** '.($visitor->notes ?: 'None'))
             ->action('View Visitor Log', url('/visitors'))
             ->line('Please review and take appropriate action.');
     }
@@ -48,7 +48,7 @@ class VisitorFlagged extends Notification implements ShouldQueue
             'badge_number' => $this->visitorLog->badge_number,
             'checked_in_at' => $this->visitorLog->checked_in_at?->toIso8601String(),
             'notes' => $visitor->notes,
-            'message' => '⚠️ Flagged visitor: ' . $visitor->name . ' has checked in.',
+            'message' => '⚠️ Flagged visitor: '.$visitor->name.' has checked in.',
         ];
     }
 

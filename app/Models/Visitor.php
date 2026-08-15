@@ -23,6 +23,7 @@ class Visitor extends Model
         'valid_id_number',
         'is_flagged',
         'notes',
+        'qr_code_token',
     ];
 
     protected function casts(): array

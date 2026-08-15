@@ -247,9 +247,9 @@ new #[Title('Visitor Log')] #[Layout('layouts::app')] class extends Component {
                             </flux:table.cell>
                             <flux:table.cell class="hidden sm:table-cell">{{ $log->badge_number ?: '—' }}</flux:table.cell>
                             <flux:table.cell class="hidden sm:table-cell">
-                                @if ($log->qr_code_token)
+                                @if ($log->visitor?->qr_code_token)
                                     <img
-                                        src="{{ route('qr.code', $log->qr_code_token) }}"
+                                        src="{{ route('qr.code', $log->visitor->qr_code_token) }}"
                                         alt="QR"
                                         class="h-8 w-8 cursor-pointer rounded border border-neutral-200 transition-opacity hover:opacity-80 dark:border-neutral-700"
                                         x-on:click="previewQr = $event.target.src"
