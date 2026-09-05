@@ -4,9 +4,8 @@ use App\Models\PreRegistration;
 use App\Models\User;
 use App\Models\Visitor;
 use App\Models\VisitorLog;
-use App\Notifications\VisitorCheckedIn;
-use App\Notifications\VisitorCheckedOut;
-use App\Notifications\VisitorFlagged;
+use App\Services\VisitorCheckInService;
+use App\Services\VisitorCheckOutService;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -97,21 +96,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
 
     protected function activeLogForQrToken(?string $token): ?VisitorLog
     {
-        if (! $token) {
-            return null;
-        }
-
-        $visitor = Visitor::where('qr_code_token', $token)->first();
-
-        if (! $visitor) {
-            return null;
-        }
-
-        return VisitorLog::with('visitor')
-            ->where('visitor_id', $visitor->id)
-            ->where('status', 'checked_in')
-            ->latest('checked_in_at')
-            ->first();
+        return app(VisitorCheckInService::class)->activeLogForToken($token);
     }
 
     #[Computed]
@@ -130,15 +115,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
             return;
         }
 
-        $visitorLog->update([
-            'status' => 'checked_out',
-            'checked_out_at' => now(),
-            'checkout_photo' => $this->checkoutPhoto ?: null,
-        ]);
-
-        if ($visitorLog->host_user_id && $hostUser = $visitorLog->hostUser) {
-            $hostUser->notify(new VisitorCheckedOut($visitorLog));
-        }
+        app(VisitorCheckOutService::class)->checkOut($visitorLog, $this->checkoutPhoto);
 
         Flux::toast(variant: 'success', text: __(':name has been checked out.', ['name' => $visitorLog->visitor->name]));
 
@@ -545,13 +522,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
 
     public function generateBadgeNumber(): string
     {
-        if (! Schema::hasTable('visitor_logs')) {
-            return 'V-' . strtoupper(Str::random(6));
-        }
-
-        $count = VisitorLog::whereDate('created_at', today())->count() + 1;
-
-        return 'V-' . now()->format('Ymd') . '-' . str_pad($count, 3, '0', STR_PAD_LEFT);
+        return app(VisitorCheckInService::class)->generateBadgeNumber();
     }
 
     // ── Check-in ──
@@ -564,58 +535,25 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
             'purpose' => 'nullable|string|max:255',
         ]);
 
-        if ($this->selectedVisitorId) {
-            $visitor = Visitor::findOrFail($this->selectedVisitorId);
-
-            if (! $visitor->qr_code_token) {
-                $visitor->update(['qr_code_token' => Str::random(32)]);
-            }
-        } else {
-            $preQrToken = $this->selectedPreRegistration?->qr_code_token ?: Str::random(32);
-            $preIdPhoto = $this->selectedPreRegistration?->valid_id_photo;
-
-            $visitor = Visitor::create([
-                'name' => $this->name,
-                'email' => $this->email ?: null,
-                'phone' => $this->phone ?: null,
-                'company' => $this->company ?: null,
-                'valid_id_number' => $this->validIdNumber ?: null,
-                'photo' => $this->photo ?: ($preIdPhoto ?: null),
-                'qr_code_token' => $preQrToken,
-            ]);
-        }
-
-        $badgeNumber = $this->generateBadgeNumber();
-
-        $visitorLog = VisitorLog::create([
-            'visitor_id' => $visitor->id,
+        $result = app(VisitorCheckInService::class)->checkIn([
+            'visitor_id' => $this->selectedVisitorId,
+            'pre_registration_id' => $this->selectedPreRegistrationId,
+            'name' => $this->name,
+            'email' => $this->email,
+            'phone' => $this->phone,
+            'company' => $this->company,
+            'valid_id_number' => $this->validIdNumber,
+            'photo' => $this->photo,
             'host' => $this->host,
             'host_user_id' => $this->hostUserId,
             'purpose' => $this->purpose,
-            'photo' => $this->visitPhoto ?: null,
-            'badge_number' => $badgeNumber,
-            'status' => 'checked_in',
-            'checked_in_at' => now(),
+            'visit_photo' => $this->visitPhoto,
         ]);
 
-        $this->lastLog = $visitorLog->load('visitor');
+        $this->lastLog = $result['log'];
         $this->justCheckedIn = true;
 
-        if ($visitorLog->host_user_id && $hostUser = $visitorLog->hostUser) {
-            $hostUser->notify(new VisitorCheckedIn($visitorLog));
-        }
-
-        if ($this->flaggedMatch) {
-            $visitor->update(['is_flagged' => true]);
-
-            User::chunk(100, fn ($users) => $users->each->notify(new VisitorFlagged($visitorLog)));
-        }
-
-        if ($this->selectedPreRegistrationId) {
-            PreRegistration::whereKey($this->selectedPreRegistrationId)->update(['status' => 'used']);
-        }
-
-        Flux::toast(variant: 'success', text: __('Welcome, :name! Badge: :badge', ['name' => $visitor->name, 'badge' => $badgeNumber]));
+        Flux::toast(variant: 'success', text: __('Welcome, :name! Badge: :badge', ['name' => $result['visitor']->name, 'badge' => $result['badge_number']]));
     }
 
     public function resetForm(): void
@@ -649,15 +587,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     {
         $visitorLog = VisitorLog::with('visitor')->findOrFail($this->pendingCheckoutId);
 
-        $visitorLog->update([
-            'status' => 'checked_out',
-            'checked_out_at' => now(),
-            'checkout_photo' => $this->checkoutPhoto ?: null,
-        ]);
-
-        if ($visitorLog->host_user_id && $hostUser = $visitorLog->hostUser) {
-            $hostUser->notify(new VisitorCheckedOut($visitorLog));
-        }
+        app(VisitorCheckOutService::class)->checkOut($visitorLog, $this->checkoutPhoto);
 
         Flux::toast(variant: 'success', text: __(':name has been checked out.', ['name' => $visitorLog->visitor->name]));
 
@@ -709,15 +639,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     #[Computed]
     public function flaggedMatch(): ?Visitor
     {
-        $name = $this->selectedVisitor?->name ?? $this->name;
-
-        if ($name === '' || ! Schema::hasTable('visitors')) {
-            return null;
-        }
-
-        return Visitor::flagged()
-            ->where('name', $name)
-            ->first();
+        return app(VisitorCheckInService::class)->flaggedMatch($this->selectedVisitor, $this->name);
     }
 
     #[Computed]

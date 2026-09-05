@@ -26,7 +26,7 @@ composer dev            # runs serve + queue:listen + vite concurrently
 - **Tailwind CSS v4** via `@tailwindcss/vite`
 - **Pest PHP 4** for testing (function-based, `pest()->extend(TestCase::class)`)
 - **Pint** for code style (preset: `laravel`)
-- **SQLite** default, all services (session/cache/queue) use `database` driver
+- **MySQL** default connection (`DB_CONNECTION=mysql`), dedicated `vms` database + user. Tests run on in-memory **SQLite** (`DB_DATABASE=:memory:`), so raw SQL must be portable — `resources/views/pages/⚡dashboard.blade.php` `hourExpression()` switches between `DATE_FORMAT` (MySQL) and `strftime` (SQLite).
 
 ## Architecture notes
 

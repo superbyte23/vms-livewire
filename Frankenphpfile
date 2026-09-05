@@ -1,0 +1,16 @@
+{
+    auto_https disable_redirects
+}
+
+https://192.168.1.4:9443 {
+    tls /var/www/vms-livewire/.certs/192.168.1.4.pem /var/www/vms-livewire/.certs/192.168.1.4-key.pem
+    root * /var/www/vms-livewire/public
+    php_server
+    encode gzip
+}
+
+http://192.168.1.4:8888 {
+    root * /var/www/vms-livewire/public
+    php_server
+    encode gzip
+}

@@ -10,6 +10,11 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
     const viteHost = env.VITE_HOST || 'localhost';
 
+    const https = env.VITE_HTTPS === 'true' ? {
+        cert: env.VITE_HTTPS_CERT,
+        key: env.VITE_HTTPS_KEY,
+    } : undefined;
+
     return {
         plugins: [
             laravel({
@@ -29,7 +34,9 @@ export default defineConfig(({ mode }) => {
         ],
         server: {
             host: '0.0.0.0',
+            strictPort: true,
             cors: true,
+            https,
             hmr: {
                 host: viteHost,
             },

@@ -54,7 +54,11 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74\" \"php artisan serve --host=0.0.0.0 --port=8001\" \"php artisan queue:listen --tries=1\" \"npm run dev\" --names='server,queue,vite'"
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74\" \"php artisan serve --host=0.0.0.0 --port=8010\" \"php artisan queue:listen --tries=1\" \"npm run dev\" --names='server,queue,vite'"
+        ],
+        "franken": [
+            "Composer\\Config::disableProcessTimeout",
+            "npx concurrently -c \"#93c5fd,#c4b5fd,#fdba74\" \"frankenphp run --config Frankenphpfile --adapter caddyfile\" \"php artisan queue:listen --tries=1\" \"npm run dev\" --names='franken,queue,vite'"
         ],
         "lint": [
             "pint --parallel"

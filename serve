@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Auto-detect current IP and start the dev server with HTTPS via Caddy
+IP=$(hostname -I | awk '{print $1}')
+DIR="$(cd "$(dirname "$0")" && pwd)"
+CERT_DIR="$DIR/.certs"
+CERT="$CERT_DIR/${IP}.pem"
+KEY="$CERT_DIR/${IP}-key.pem"
+CADDYFILE="$DIR/Caddyfile"
+
+# Kill existing processes
+pkill -f "artisan serve" 2>/dev/null || true
+pkill -f "vite" 2>/dev/null || true
+pkill -f "caddy" 2>/dev/null || true
+sleep 1
+
+# Generate cert if IP changed or doesn't exist
+if [ ! -f "$CERT" ]; then
+  echo " Generating cert for $IP..."
+  openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
+    -keyout "$KEY" -out "$CERT" \
+    -subj "/CN=$IP" \
+    -addext "subjectAltName=IP:$IP,DNS:localhost" >/dev/null 2>&1
+fi
+
+# Update Caddyfile with current IP
+sed -i "s|https://[0-9.]*:8443|https://${IP}:8443|g" "$CADDYFILE"
+sed -i "s|tls.*\.pem.*|tls ${CERT} ${KEY}|g" "$CADDYFILE"
+
+# Start artisan serve
+echo " Starting artisan serve on :8001..."
+php "$DIR/artisan" serve --host=0.0.0.0 --port=8001 &>/dev/null &
+sleep 1
+
+# Start Caddy
+echo " Starting Caddy on https://${IP}:8443..."
+caddy run --config "$CADDYFILE" &>/dev/null &
+
+echo ""
+echo " Access your app at: https://${IP}:8443"
+echo " Press Ctrl+C to stop"
+wait

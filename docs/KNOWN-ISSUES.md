@@ -49,6 +49,17 @@ Tracking list of open problems to address. Add new items at the top of their sec
   netsh advfirewall firewall add rule name="VMS WSL 8443" dir=in action=allow protocol=TCP localport=8443 profile=private,domain
   ```
 
+### 4c. Kiosk API plain-HTTP port 8888 not reachable from devices (new port, no firewall rule)
+- **Where:** machine environment (Windows Firewall / WSL2 mirrored), not app code.
+- **Problem:** the kiosk RN app and device browser reach `https://192.168.1.4:9443` but fail on `http://192.168.1.4:8888` ("Cannot reach the server"). The WSL box serves 8888 on all interfaces, but the Windows host drops inbound TCP 8888 because no firewall rule exists for it (unlike 9443/8443/5173/8001, which were all opened previously).
+- **Note:** the LAN IP changed from `192.168.1.13` → `192.168.1.4`. Whenever the PC's LAN IP or a kiosk port changes, Windows Firewall needs a matching inbound rule.
+- **Fix (run once on the Windows host, elevated PowerShell):**
+  ```
+  netsh advfirewall firewall add rule name="VMS HTTP 8888" dir=in action=allow protocol=TCP localport=8888 profile=private,domain
+  ```
+- **App URL expected:** `http://192.168.1.4:8888` (React Native kiosk default in `src/config/store.ts`). No certificate needed over plain HTTP.
+
+
 ### 5. Vite bundle chunk-size warning
 - **Where:** `resources/js/app.js` (vendored `html5-qrcode` → ~558 KB bundle)
 - **Problem:** `npm run build` prints a chunk-size warning. Harmless, but adds load time.

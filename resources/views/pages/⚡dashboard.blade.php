@@ -3,6 +3,7 @@
 use App\Models\VisitorLog;
 use Carbon\CarbonPeriod;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -13,6 +14,13 @@ new #[Title('Dashboard')] #[Layout('layouts::app')] class extends Component {
     public string $chartPeriod = '14days';
 
     public function updatedChartPeriod(): void {}
+
+    private function hourExpression(): string
+    {
+        return DB::connection()->getDriverName() === 'mysql'
+            ? "DATE_FORMAT(checked_in_at, '%H') as hour"
+            : "strftime('%H', checked_in_at) as hour";
+    }
 
     #[Computed]
     public function todayCount(): int
@@ -63,7 +71,7 @@ new #[Title('Dashboard')] #[Layout('layouts::app')] class extends Component {
         }
 
         $hours = VisitorLog::whereDate('created_at', today())
-            ->selectRaw("strftime('%H', checked_in_at) as hour, count(*) as total")
+            ->selectRaw($this->hourExpression().', count(*) as total')
             ->whereNotNull('checked_in_at')
             ->groupBy('hour')
             ->orderByDesc('total')
@@ -132,7 +140,7 @@ new #[Title('Dashboard')] #[Layout('layouts::app')] class extends Component {
             return ['labels' => [], 'data' => []];
         }
 
-        $hours = VisitorLog::selectRaw("strftime('%H', checked_in_at) as hour, count(*) as total")
+        $hours = VisitorLog::selectRaw($this->hourExpression().', count(*) as total')
             ->whereNotNull('checked_in_at')
             ->groupBy('hour')
             ->orderBy('hour')

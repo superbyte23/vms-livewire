@@ -17,12 +17,17 @@ new #[Title('Pre-Registrations')] #[Layout('layouts::app')] class extends Compon
 
     public string $search = '';
     public string $statusFilter = '';
+    public array $selected = [];
+    public bool $selectAll = false;
 
     public bool $showCreateModal = false;
     public bool $showEditModal = false;
     public bool $showViewModal = false;
     public bool $showCancelModal = false;
     public bool $showDeleteModal = false;
+    public bool $showBulkDeleteModal = false;
+    public bool $showClearAllModal = false;
+    public string $clearAllConfirm = '';
 
     public ?string $editingId = null;
     public ?string $viewingId = null;
@@ -210,6 +215,57 @@ new #[Title('Pre-Registrations')] #[Layout('layouts::app')] class extends Compon
         $this->reset('deletingId', 'showDeleteModal');
     }
 
+    public function updatedSelectAll(bool $value): void
+    {
+        $this->selected = $value ? $this->preRegistrations->pluck('id')->toArray() : [];
+    }
+
+    public function confirmBulkDelete(): void
+    {
+        $this->showBulkDeleteModal = true;
+    }
+
+    public function bulkDelete(): void
+    {
+        PreRegistration::whereIn('id', $this->selected)->delete();
+        $this->selected = [];
+        $this->selectAll = false;
+        $this->showBulkDeleteModal = false;
+        Flux::toast(variant: 'success', text: 'Selected pre-registrations deleted successfully.');
+    }
+
+    public function cancelBulkDelete(): void
+    {
+        $this->showBulkDeleteModal = false;
+    }
+
+    public function confirmClearAll(): void
+    {
+        $this->showClearAllModal = true;
+    }
+
+    public function clearAllPreRegistrations(): void
+    {
+        if ($this->clearAllConfirm !== 'CLEAR') {
+            Flux::toast(variant: 'danger', text: 'Please type CLEAR to confirm.');
+
+            return;
+        }
+
+        PreRegistration::query()->delete();
+        $this->selected = [];
+        $this->selectAll = false;
+        $this->clearAllConfirm = '';
+        $this->showClearAllModal = false;
+        Flux::toast(variant: 'success', text: 'All pre-registration data has been cleared.');
+    }
+
+    public function cancelClearAll(): void
+    {
+        $this->clearAllConfirm = '';
+        $this->showClearAllModal = false;
+    }
+
     #[Computed]
     public function viewingPreRegistration(): ?PreRegistration
     {
@@ -268,7 +324,10 @@ new #[Title('Pre-Registrations')] #[Layout('layouts::app')] class extends Compon
             <flux:heading size="lg">Pre-Registrations</flux:heading>
             <flux:subheading>Manage visits booked ahead of time.</flux:subheading>
         </div>
-        <flux:button variant="primary" wire:click="openCreateModal" icon="plus">Add Pre-Registration</flux:button>
+        <div class="flex gap-2">
+            <flux:button variant="danger" wire:click="confirmClearAll" icon="trash">Clear All Data</flux:button>
+            <flux:button variant="primary" wire:click="openCreateModal" icon="plus">Add Pre-Registration</flux:button>
+        </div>
     </div>
 
     {{-- Search + filters --}}
@@ -290,6 +349,19 @@ new #[Title('Pre-Registrations')] #[Layout('layouts::app')] class extends Compon
         @endforeach
     </div>
 
+    {{-- Bulk action bar --}}
+    @if (count($this->selected) > 0)
+        <div class="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800 dark:bg-blue-900/20">
+            <span class="text-sm font-medium text-blue-700 dark:text-blue-300">
+                {{ count($this->selected) }} pre-registration{{ count($this->selected) > 1 ? 's' : '' }} selected
+            </span>
+            <div class="flex gap-2">
+                <flux:button size="sm" variant="ghost" wire:click="$set('selected', [])">Clear</flux:button>
+                <flux:button size="sm" variant="danger" icon="trash" wire:click="confirmBulkDelete">Delete Selected</flux:button>
+            </div>
+        </div>
+    @endif
+
     {{-- Table --}}
     @if ($this->preRegistrations->isEmpty())
             <div class="flex flex-col items-center justify-center py-16 text-center">
@@ -300,6 +372,9 @@ new #[Title('Pre-Registrations')] #[Layout('layouts::app')] class extends Compon
         @else
             <flux:table :paginate="$this->preRegistrations">
                 <flux:table.columns>
+                    <flux:table.column class="w-10">
+                        <input type="checkbox" wire:model.live="selectAll" class="rounded border-neutral-300 text-blue-600 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800">
+                    </flux:table.column>
                     <flux:table.column>Name</flux:table.column>
                     <flux:table.column class="hidden sm:table-cell">Host</flux:table.column>
                     <flux:table.column class="hidden md:table-cell">Purpose</flux:table.column>
@@ -313,6 +388,9 @@ new #[Title('Pre-Registrations')] #[Layout('layouts::app')] class extends Compon
                 <flux:table.rows>
                     @foreach ($this->preRegistrations as $pre)
                         <flux:table.row :key="$pre->id">
+                            <flux:table.cell class="w-10">
+                                <input type="checkbox" wire:model.live="selected" value="{{ $pre->id }}" class="rounded border-neutral-300 text-blue-600 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800">
+                            </flux:table.cell>
                             <flux:table.cell variant="strong">
                                 <div class="flex items-center gap-3">
                                     <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
@@ -558,5 +636,54 @@ new #[Title('Pre-Registrations')] #[Layout('layouts::app')] class extends Compon
                 </flux:button>
             </div>
         @endif
+    </flux:modal>
+
+    {{-- Bulk Delete Confirmation Modal --}}
+    <flux:modal wire:model="showBulkDeleteModal" name="bulk-delete-pre-registrations" class="min-w-sm">
+        <flux:heading size="lg">Delete {{ count($this->selected) }} Pre-Registration{{ count($this->selected) > 1 ? 's' : '' }}</flux:heading>
+        <flux:text class="mt-2">
+            Are you sure you want to delete {{ count($this->selected) }} selected pre-registration{{ count($this->selected) > 1 ? 's' : '' }}?
+            This action cannot be undone.
+        </flux:text>
+
+        <div class="mt-6 flex gap-2 justify-end">
+            <flux:button variant="ghost" wire:click="cancelBulkDelete">
+                Cancel
+            </flux:button>
+            <flux:button variant="danger" wire:click="bulkDelete">
+                Delete {{ count($this->selected) }} Pre-Registration{{ count($this->selected) > 1 ? 's' : '' }}
+            </flux:button>
+        </div>
+    </flux:modal>
+
+    {{-- Clear All Data Confirmation Modal --}}
+    <flux:modal wire:model="showClearAllModal" name="clear-all-pre-registrations" class="min-w-sm">
+        <flux:heading size="lg">Clear All Pre-Registration Data</flux:heading>
+        <flux:text class="mt-2">
+            This will permanently delete <strong>every pre-registration</strong> in the system.
+            This action cannot be undone.
+        </flux:text>
+
+        <div class="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
+            <div class="flex items-start gap-2">
+                <svg class="mt-0.5 h-4 w-4 shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                <p class="text-xs text-red-700 dark:text-red-400">
+                    Type <strong>CLEAR</strong> to confirm this destructive action.
+                </p>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            <flux:input wire:model="clearAllConfirm" label="Confirmation" placeholder="Type CLEAR" />
+        </div>
+
+        <div class="mt-6 flex gap-2 justify-end">
+            <flux:button variant="ghost" wire:click="cancelClearAll">
+                Cancel
+            </flux:button>
+            <flux:button variant="danger" wire:click="clearAllPreRegistrations">
+                Clear All Data
+            </flux:button>
+        </div>
     </flux:modal>
 </div>

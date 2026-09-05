@@ -39,11 +39,12 @@ In dev, the page loads CSS/JS from the URL written in `public/hot` (`http://loca
 - Fix B: point the vite `hmr.host` / hot file at a phone-reachable host (HTTP-only path).
 
 ### 6. Windows Firewall
-LAN devices hitting `http(s)://<pc-ip>:<port>` may be dropped until an inbound rule exists:
+LAN devices hitting `http(s)://<pc-ip>:<port>` may be dropped until an inbound rule exists (run once per port on the Windows host, elevated PowerShell):
 ```
 netsh advfirewall firewall add rule name="VMS HTTPS 8443" dir=in action=allow protocol=TCP localport=8443
+netsh advfirewall firewall add rule name="VMS HTTP 8888"  dir=in action=allow protocol=TCP localport=8888
 ```
-(requires an elevated PowerShell)
+> Whenever the PC's LAN IP or a kiosk port changes, add/refresh the matching rule. Current IP: `192.168.1.4`; kiosk API: `http://192.168.1.4:8888` (plain HTTP) and `https://192.168.1.4:9443` (HTTPS).
 
 ## Realistic combinations
 

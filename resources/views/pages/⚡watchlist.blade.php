@@ -14,11 +14,14 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
 
     public string $search = '';
     public string $addSearch = '';
+    public array $selected = [];
+    public bool $selectAll = false;
 
     public bool $showViewModal = false;
     public bool $showEditNotesModal = false;
     public bool $showUnflagModal = false;
     public bool $showAddModal = false;
+    public bool $showBulkUnflagModal = false;
 
     public ?string $viewingVisitorId = null;
     public ?string $editingNotesId = null;
@@ -124,6 +127,30 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
         $this->reset('unflaggingVisitorId', 'showUnflagModal');
     }
 
+    public function updatedSelectAll(bool $value): void
+    {
+        $this->selected = $value ? $this->flaggedVisitors->pluck('id')->toArray() : [];
+    }
+
+    public function confirmBulkUnflag(): void
+    {
+        $this->showBulkUnflagModal = true;
+    }
+
+    public function bulkUnflag(): void
+    {
+        Visitor::whereIn('id', $this->selected)->update(['is_flagged' => false]);
+        $this->selected = [];
+        $this->selectAll = false;
+        $this->showBulkUnflagModal = false;
+        Flux::toast(variant: 'success', text: 'Selected visitors removed from watchlist.');
+    }
+
+    public function cancelBulkUnflag(): void
+    {
+        $this->showBulkUnflagModal = false;
+    }
+
     public function openAddModal(): void
     {
         $this->reset('addSearch');
@@ -158,6 +185,19 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
         </div>
     </div>
 
+    {{-- Bulk action bar --}}
+    @if (count($this->selected) > 0)
+        <div class="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800 dark:bg-blue-900/20">
+            <span class="text-sm font-medium text-blue-700 dark:text-blue-300">
+                {{ count($this->selected) }} visitor{{ count($this->selected) > 1 ? 's' : '' }} selected
+            </span>
+            <div class="flex gap-2">
+                <flux:button size="sm" variant="ghost" wire:click="$set('selected', [])">Clear</flux:button>
+                <flux:button size="sm" variant="danger" icon="flag" wire:click="confirmBulkUnflag">Remove from Watchlist</flux:button>
+            </div>
+        </div>
+    @endif
+
     {{-- Table --}}
     @if ($this->flaggedVisitors->isEmpty())
             <div class="flex flex-col items-center justify-center py-16 text-center">
@@ -174,6 +214,9 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
         @else
             <flux:table :paginate="$this->flaggedVisitors">
                 <flux:table.columns>
+                    <flux:table.column class="w-10">
+                        <input type="checkbox" wire:model.live="selectAll" class="rounded border-neutral-300 text-blue-600 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800">
+                    </flux:table.column>
                     <flux:table.column>Visitor</flux:table.column>
                     <flux:table.column class="hidden sm:table-cell">Contact</flux:table.column>
                     <flux:table.column class="hidden md:table-cell">Notes</flux:table.column>
@@ -184,6 +227,9 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
                 <flux:table.rows>
                     @foreach ($this->flaggedVisitors as $visitor)
                         <flux:table.row :key="$visitor->id">
+                            <flux:table.cell class="w-10">
+                                <input type="checkbox" wire:model.live="selected" value="{{ $visitor->id }}" class="rounded border-neutral-300 text-blue-600 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800">
+                            </flux:table.cell>
                             <flux:table.cell variant="strong">
                                 <div class="flex items-center gap-3">
                                     @if ($visitor->photo)
@@ -382,6 +428,24 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
                     </div>
                 @endif
             @endif
+        </div>
+    </flux:modal>
+
+    {{-- Bulk Unflag Confirmation Modal --}}
+    <flux:modal wire:model="showBulkUnflagModal" name="bulk-unflag-watchlist" class="min-w-sm">
+        <flux:heading size="lg">Remove {{ count($this->selected) }} Visitor{{ count($this->selected) > 1 ? 's' : '' }} from Watchlist</flux:heading>
+        <flux:text class="mt-2">
+            Are you sure you want to remove {{ count($this->selected) }} selected visitor{{ count($this->selected) > 1 ? 's' : '' }} from the watchlist?
+            They will no longer be flagged on check-in.
+        </flux:text>
+
+        <div class="mt-6 flex gap-2 justify-end">
+            <flux:button variant="ghost" wire:click="cancelBulkUnflag">
+                Cancel
+            </flux:button>
+            <flux:button variant="danger" wire:click="bulkUnflag">
+                Remove {{ count($this->selected) }} Visitor{{ count($this->selected) > 1 ? 's' : '' }}
+            </flux:button>
         </div>
     </flux:modal>
 </div>

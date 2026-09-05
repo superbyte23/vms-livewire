@@ -16,10 +16,13 @@ new #[Title('User Management')] #[Layout('layouts::app')] class extends Componen
     public string $search = '';
     public string $sortField = 'name';
     public string $sortDirection = 'asc';
+    public array $selected = [];
+    public bool $selectAll = false;
 
     public bool $showCreateModal = false;
     public bool $showEditModal = false;
     public bool $showDeleteModal = false;
+    public bool $showBulkDeleteModal = false;
 
     public ?string $editingUserId = null;
     public ?string $deletingUserId = null;
@@ -137,6 +140,37 @@ new #[Title('User Management')] #[Layout('layouts::app')] class extends Componen
         $this->reset('deletingUserId', 'showDeleteModal');
     }
 
+    public function updatedSelectAll(bool $value): void
+    {
+        $this->selected = $value ? $this->users->pluck('id')->toArray() : [];
+    }
+
+    public function confirmBulkDelete(): void
+    {
+        $this->showBulkDeleteModal = true;
+    }
+
+    public function bulkDelete(): void
+    {
+        $filtered = collect($this->selected)->reject(fn ($id) => $id === auth()->id())->toArray();
+
+        if (count($filtered) < count($this->selected)) {
+            Flux::toast(variant: 'danger', text: 'Skipped your own account — cannot self-delete.');
+        }
+
+        User::whereIn('id', $filtered)->delete();
+        $this->selected = [];
+        $this->selectAll = false;
+        $this->showBulkDeleteModal = false;
+
+        Flux::toast(variant: 'success', text: 'Selected users deleted successfully.');
+    }
+
+    public function cancelBulkDelete(): void
+    {
+        $this->showBulkDeleteModal = false;
+    }
+
     #[Computed]
     public function deletingUser(): ?User
     {
@@ -165,6 +199,19 @@ new #[Title('User Management')] #[Layout('layouts::app')] class extends Componen
         </div>
     </div>
 
+    {{-- Bulk action bar --}}
+    @if (count($this->selected) > 0)
+        <div class="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-800 dark:bg-blue-900/20">
+            <span class="text-sm font-medium text-blue-700 dark:text-blue-300">
+                {{ count($this->selected) }} user{{ count($this->selected) > 1 ? 's' : '' }} selected
+            </span>
+            <div class="flex gap-2">
+                <flux:button size="sm" variant="ghost" wire:click="$set('selected', [])">Clear</flux:button>
+                <flux:button size="sm" variant="danger" icon="trash" wire:click="confirmBulkDelete">Delete Selected</flux:button>
+            </div>
+        </div>
+    @endif
+
     {{-- Table --}}
     @if ($this->users->isEmpty())
             <div class="flex flex-col items-center justify-center py-16 text-center">
@@ -175,6 +222,9 @@ new #[Title('User Management')] #[Layout('layouts::app')] class extends Componen
         @else
             <flux:table :paginate="$this->users">
                 <flux:table.columns>
+                    <flux:table.column class="w-10">
+                        <input type="checkbox" wire:model.live="selectAll" class="rounded border-neutral-300 text-blue-600 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800">
+                    </flux:table.column>
                     <flux:table.column class="cursor-pointer hover:text-neutral-700 dark:hover:text-neutral-300" wire:click="sortBy('name')">
                         Name
                         @if ($this->sortField === 'name')
@@ -200,6 +250,9 @@ new #[Title('User Management')] #[Layout('layouts::app')] class extends Componen
                 <flux:table.rows>
                     @foreach ($this->users as $user)
                         <flux:table.row :key="$user->id" class="group">
+                            <flux:table.cell class="w-10">
+                                <input type="checkbox" wire:model.live="selected" value="{{ $user->id }}" class="rounded border-neutral-300 text-blue-600 focus:ring-blue-500 dark:border-neutral-600 dark:bg-neutral-800">
+                            </flux:table.cell>
                             <flux:table.cell variant="strong">
                                 <div class="flex items-center gap-3">
                                     <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
@@ -308,5 +361,23 @@ new #[Title('User Management')] #[Layout('layouts::app')] class extends Componen
                 </flux:button>
             </div>
         @endif
+    </flux:modal>
+
+    {{-- Bulk Delete Confirmation Modal --}}
+    <flux:modal wire:model="showBulkDeleteModal" name="bulk-delete-users" class="min-w-sm">
+        <flux:heading size="lg">Delete {{ count($this->selected) }} User{{ count($this->selected) > 1 ? 's' : '' }}</flux:heading>
+        <flux:text class="mt-2">
+            Are you sure you want to delete {{ count($this->selected) }} selected user{{ count($this->selected) > 1 ? 's' : '' }}?
+            This action cannot be undone.
+        </flux:text>
+
+        <div class="mt-6 flex gap-2 justify-end">
+            <flux:button variant="ghost" wire:click="cancelBulkDelete">
+                Cancel
+            </flux:button>
+            <flux:button variant="danger" wire:click="bulkDelete">
+                Delete {{ count($this->selected) }} User{{ count($this->selected) > 1 ? 's' : '' }}
+            </flux:button>
+        </div>
     </flux:modal>
 </div>
