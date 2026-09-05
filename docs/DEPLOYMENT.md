@@ -116,6 +116,12 @@ php artisan queue:work --tries=1                             # -> /tmp/vms-queue
 
 ## 7. Day-to-day operations
 
+### Auto-start (in place)
+
+On WSL boot, `cron @reboot` (user `vms`) runs `auto-start.sh`, which waits for MySQL on `127.0.0.1:3307` (up to 60 s), then runs `start-server.sh`. Log: `storage/logs/auto-start.log`. Manual run: `crontab -l` (installed entry), remove via `crontab -r`, stop it from starting with `crontab -e`.
+
+> The Windows **portproxy** must still be refreshed after a `wsl --shutdown`/reboot (NAT IP changes) — see §7b.
+
 ### Start / restart services (in WSL)
 ```
 wsl -d Ubuntu-26.04
@@ -123,6 +129,9 @@ cd /home/vms/vms-livewire
 bash start-server.sh
 ```
 MySQL starts via systemd (`serv mysql status`).
+
+### 7b. Windows: portproxy refresh
+`refresh-portproxy.ps1` auto-discovers the WSL NAT IP and re-adds firewall rules; run it elevated after a WSL restart (or register it as a scheduled task run at logon/logon-triggered WSL start).
 
 ### Stop
 ```
