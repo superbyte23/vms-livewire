@@ -35,13 +35,16 @@ Tracking list of open problems to address. Add new items at the top of their sec
 
 ## 🟢 Low priority / Info
 
-### 4. Port 8000 unusable (WSL2 mirrored networking)
+### 4. Port 8000 unusable (WSL2 mirrored networking) — SUPERSEDED
+> **Superseded:** the deployment now runs on a separate, isolated WSL2 distro (`Ubuntu-26.04`) in **NAT mode** with Windows `portproxy` + FrankenPHP on `https://192.168.1.100:9443` and `http://192.168.1.100:8888`. See `docs/DEPLOYMENT.md`. Mirrored networking / mkcert / Caddy on `192.168.1.13` are no longer in use; this entry is kept as history.
+
 - **Where:** machine environment (Windows/WSL networking), not app code
 - **Problem:** Windows IP Helper service (`iphlpsvc`) binds `0.0.0.0:8000`, so Laravel can never bind it; `artisan serve` silently fell back to 8001/8002.
 - **Resolution (root cause was Windows-side):** how Windows reaches WSL. `[wsl2] networkingMode=mirrored` in `.wslconfig` makes WSL share the host's LAN IP, and inbound TCP **8001 + 5173** firewall rules were added on the Windows host (admin). The app itself needed only minor config: `composer dev` pins `--port=8001`; `APP_URL=http://192.168.1.13:8001` and `VITE_HOST` in `.env` make Vite advertise the LAN IP so phones load CSS/JS from `http://<lan-ip>:5173` instead of `localhost`. The app is now reachable from other devices at `http://192.168.1.13:8001`. Reclaiming 8000 requires stopping `iphlpsvc` as Windows admin (optional).
 - **Note:** `VITE_HOST` must match the machine's current LAN IP — update `.env` if it changes (WSL2 mirrored networking shares the Windows host IP).
 
-### 4b. Camera blocked from other devices (secure-context rule)
+### 4b. Camera blocked from other devices (secure-context rule) — SUPERSEDED
+> **Superseded:** HTTPS is now served by FrankenPHP itself (`https://192.168.1.100:9443`, cert signed by the project-local "VMS-Livewire Local CA"); see `docs/DEPLOYMENT.md` §3 for the per-device CA install.
 - **Where:** browser rule — `getUserMedia` only works on `localhost` or `https://`; plain `http://<ip>` never allows it.
 - **Resolution (in place):** HTTPS via mkcert + Caddy proxy `https://192.168.1.13:8443` → `127.0.0.1:8001`; `bootstrap/app.php` trusts the proxy; built assets served same-origin (no `public/hot`). Full walkthrough in `docs/MOBILE-ACCESS.md`.
 - **Still required (per new device):** install the mkcert root CA on the phone, and the Windows host still needs an inbound firewall rule for **TCP 8443** (admin):
@@ -49,7 +52,8 @@ Tracking list of open problems to address. Add new items at the top of their sec
   netsh advfirewall firewall add rule name="VMS WSL 8443" dir=in action=allow protocol=TCP localport=8443 profile=private,domain
   ```
 
-### 4c. Kiosk API plain-HTTP port 8888 not reachable from devices (new port, no firewall rule)
+### 4c. Kiosk API plain-HTTP port 8888 not reachable from devices (new port, no firewall rule) — RESOLVED
+> **Resolved:** the current deployment has this in place — Windows Firewall rule `VMS-HTTP-8888` and portproxy to the isolated `Ubuntu-26.04` distro (NAT). Also fixed on the app side: `http://:8888` must be host-agnostic (a `192.168.1.100`-scoped site returned empty `200`s for other Host headers). See `docs/DEPLOYMENT.md` §1/§6.
 - **Where:** machine environment (Windows Firewall / WSL2 mirrored), not app code.
 - **Problem:** the kiosk RN app and device browser reach `https://192.168.1.4:9443` but fail on `http://192.168.1.4:8888` ("Cannot reach the server"). The WSL box serves 8888 on all interfaces, but the Windows host drops inbound TCP 8888 because no firewall rule exists for it (unlike 9443/8443/5173/8001, which were all opened previously).
 - **Note:** the LAN IP changed from `192.168.1.13` → `192.168.1.4`. Whenever the PC's LAN IP or a kiosk port changes, Windows Firewall needs a matching inbound rule.
