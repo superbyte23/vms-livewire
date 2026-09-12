@@ -24,6 +24,10 @@
                         {{ __('Visits') }}
                     </flux:sidebar.item>
 
+                    <flux:sidebar.item icon="chart-bar" :href="route('reports')" :current="request()->routeIs('reports')" wire:navigate>
+                        {{ __('Reports') }}
+                    </flux:sidebar.item>
+
                     <flux:sidebar.item icon="users" :href="route('users')" :current="request()->routeIs('users')" wire:navigate>
                         {{ __('Users') }}
                     </flux:sidebar.item>

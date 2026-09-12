@@ -55,6 +55,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');
     Route::livewire('visitors', 'pages::visitors')->name('visitors');
     Route::livewire('visits', 'pages::visits')->name('visits');
+    Route::livewire('reports', 'pages::reports')->name('reports');
     Route::livewire('users', 'pages::users')->name('users');
     Route::livewire('watchlist', 'pages::watchlist')->name('watchlist');
 });

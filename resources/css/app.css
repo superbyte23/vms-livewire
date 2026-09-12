@@ -12,6 +12,18 @@
     display: none !important;
 }
 
+/* QR scanner previews: force the library-rendered video to fill the square
+   container. Otherwise a landscape camera stream makes the video (and the
+   scan box + corner frame computed from its first-frame size) landscape on
+   first load, with the white corners landing at the display edges. */
+#qr-reader video,
+#pre-qr-reader video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover;
+    display: block;
+}
+
 /* Prevent text-selection caret / keyboard on tappable chrome (mobile) */
 @layer base {
     :where(button, [role='button'], a, label, summary, [x-show], [x-cloak], [x-data]) {

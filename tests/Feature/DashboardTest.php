@@ -21,3 +21,19 @@ test('authenticated users can visit the dashboard', function () {
     Livewire::test('pages::dashboard')
         ->assertSee('Visit Calendar');
 });
+
+test('dashboard embeds the kiosk behind the launcher', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    Livewire::test('pages::dashboard')
+        ->assertSee('Kiosk check-in')
+        ->assertSee('Open kiosk')
+        ->assertSee('Walk-in visitors use the full kiosk here.')
+        ->assertDontSeeHtml('z-[100]')
+        ->call('openKiosk')
+        ->assertSet('showKioskModal', true)
+        ->assertSet('kioskKey', 1)
+        ->assertSee('Visita Kiosk')
+        ->assertSee('Scan booking QR');
+});

@@ -408,7 +408,7 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component
     {{-- Search --}}
     <div class="flex flex-wrap items-end gap-3">
         <div class="min-w-48 flex-1">
-            <flux:input wire:model.live.debounce.300ms="search" placeholder="Search by name, email, phone, company, or ID..." icon="magnifying-glass" />
+            <flux:input wire:model.live.debounce.300ms="search" placeholder="Search by name, email, phone, company, or ID..." icon="magnifying-glass" autocomplete="off" />
         </div>
     </div>
 
@@ -578,7 +578,7 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component
                 <x-date-picker wire:model="scheduleExpectedDate" label="Schedule date (required)" />
             <flux:select wire:model="scheduleVisitType" label="Visit Type or Purpose of Visit (required)">
                 <option value="">— Select type —</option>
-                @foreach (\App\Models\Visit::VISIT_TYPES as $type)
+                @foreach (\App\Models\VisitType::options() as $type)
                     <option value="{{ $type }}">{{ $type }}</option>
                 @endforeach
             </flux:select>

@@ -195,7 +195,7 @@ new #[Title('User Management')] #[Layout('layouts::app')] class extends Componen
     {{-- Filters --}}
     <div class="flex flex-wrap items-end gap-3">
         <div class="min-w-48 flex-1">
-            <flux:input wire:model.live.debounce.300ms="search" placeholder="Search by name or email..." icon="magnifying-glass" />
+            <flux:input type="search" wire:model.live.debounce.300ms="search" placeholder="Search by name or email..." icon="magnifying-glass" autocomplete="off" />
         </div>
     </div>
 

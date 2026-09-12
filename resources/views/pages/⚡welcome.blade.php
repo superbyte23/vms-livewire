@@ -1,14 +1,13 @@
 <?php
 
 use App\Models\User;
-use App\Models\Visitor;
 use App\Models\Visit;
+use App\Models\Visitor;
 use App\Services\VisitorCheckInService;
 use App\Services\VisitorCheckOutService;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -107,6 +106,12 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
 
     public ?string $pendingQrCheckoutToken = null;
 
+    /**
+     * When true, the kiosk is rendered inside another page (e.g. the
+     * dashboard modal) instead of as the full-screen landing route.
+     */
+    public bool $embedded = false;
+
     public function mount(): void
     {
         $token = request()->query('checkout');
@@ -128,7 +133,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
 
             if ($booking) {
                 $this->selectBooking((string) $booking->id);
-        Flux::toast(variant: 'success', text: __('Booked visit found. Continue with the visit details.'));
+                Flux::toast(variant: 'success', text: __('Booked visit found. Continue with the visit details.'));
             } else {
                 Flux::toast(variant: 'error', text: __('Invalid or already used booking QR code.'));
             }
@@ -336,7 +341,9 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
         $this->search = '';
     }
 
-    #[On('visitor-registered')]
+    // Only reacts to bookings created by the kiosk's own nested wizard
+    // (the dashboard's separate scheduling wizard uses 'visitor-registered').
+    #[On('kiosk-visitor-registered')]
     public function registerFromWizard(string $bookingId): void
     {
         $booking = Visit::scheduled()->find($bookingId);
@@ -861,7 +868,8 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
     }
 }; ?>
 
-<div class="mx-auto flex min-h-svh max-w-7xl flex-col p-4 md:p-6 lg:p-8">
+<div class="mx-auto flex w-full max-w-7xl flex-col p-4 md:p-6 lg:p-8 {{ $embedded ? '' : 'min-h-svh' }}">
+    @unless ($embedded)
     {{-- Pre-load skeleton --}}
     <div class="no-print fixed inset-0 z-[100] flex flex-col items-center gap-6 bg-white p-6 dark:bg-neutral-900"
          x-data="{ ready: false }"
@@ -905,6 +913,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
             </div>
         </div>
     </div>
+    @endunless
     <style>
         @page {
             size: 80mm 120mm;
@@ -1086,7 +1095,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                                 </button>
                                             </div>
                                             <div class="space-y-4">
-                                                <livewire:pages::components.booking-wizard :key="'kiosk-register-'.$this->registerKey" />
+                                                <livewire:pages::components.booking-wizard :key="'kiosk-register-'.$this->registerKey" :registered-event="'kiosk-visitor-registered'" />
 
                                                 <div class="text-center">
                                                     <button type="button" wire:click="cancelCreating" class="text-sm text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300">
@@ -1101,62 +1110,10 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                         {{-- Search first --}}
                                 <p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Search for your name or scan your badge.') }}</p>
                                 <div class="space-y-4">
-                                    <div class="flex gap-2">
-                                        <flux:input wire:model.live.debounce.300ms="search" placeholder="{{ __('Search by name, email, phone, or ID...') }}" icon="magnifying-glass" class="flex-1" />
-                                        @if (! $this->showPreQrScanner)
-                                            <flux:button variant="outline" wire:click="$set('showPreQrScanner', true)" icon="qr-code" class="shrink-0" title="{{ __('Scan booking QR') }}" aria-label="{{ __('Scan booking QR') }}" />
-                                        @endif
+<div class="flex gap-2">
+                                        <flux:input wire:model.live.debounce.300ms="search" placeholder="{{ __('Search by name, email, phone, or ID...') }}" icon="magnifying-glass" class="flex-1" autocomplete="off" />
+                                        <flux:button variant="outline" wire:click="$set('showPreQrScanner', true)" icon="qr-code" class="shrink-0" title="{{ __('Scan booking QR') }}" aria-label="{{ __('Scan booking QR') }}" />
                                     </div>
-
-                                    @if ($this->showPreQrScanner)
-                                        <div class="rounded-lg border border-emerald-200 p-4 dark:border-emerald-800"
-                                             x-data="{
-                                                 reader: null,
-                                                 init() {
-                                                     this.$nextTick(() => this.startScanner());
-                                                 },
-                                                 startScanner() {
-                                                     if (typeof Html5Qrcode === 'undefined') return;
-                                                     this.reader = new Html5Qrcode('pre-qr-reader');
-                                                     this.reader.start(
-                                                         { facingMode: 'environment' },
-                                                         { fps: 10, qrbox: { width: 250, height: 250 } },
-                                                          (decodedText) => {
-                                                              try {
-                                                                  const url = new URL(decodedText);
-                                                                  const booking = url.searchParams.get('booking') || url.searchParams.get('pre') || url.searchParams.get('scheduled');
-                                                                  const checkout = url.searchParams.get('checkout');
-                                                                  if (booking || checkout) {
-                                                                      this.reader.stop().catch(() => {});
-                                                                      this.reader = null;
-                                                                      if (booking) {
-                                                                          $wire.scanBookingByToken(booking);
-                                                                      } else {
-                                                                          $wire.selectVisitorByQrToken(checkout);
-                                                                      }
-                                                                  }
-                                                              } catch {}
-                                                          },
-                                                     ).catch(() => {});
-                                                 },
-                                                 destroy() {
-                                                     if (this.reader) {
-                                                         this.reader.stop().catch(() => {});
-                                                     }
-                                                 }
-                                             }">
-                                            <div class="mb-2 flex items-center justify-between">
-                                                <p class="text-sm font-medium text-neutral-900 dark:text-white">{{ __('Scan Booking QR') }}</p>
-                                                <flux:button size="sm" variant="danger" x-on:click="destroy(); $wire.$set('showPreQrScanner', false)">
-                                                    {{ __('Close') }}
-                                                </flux:button>
-                                            </div>
-                                            <div id="pre-qr-reader" class="mx-auto max-w-sm overflow-hidden rounded-lg"></div>
-                                            <p class="mt-2 text-center text-xs text-neutral-400 dark:text-neutral-500">
-                                                {{ __('Point the booking QR code at the camera') }}
-                                            </p>
-                                        </div>
-                                    @endif
 
                                     @if ($this->search !== '' && $this->searchResults->isNotEmpty())
                                         <div class="max-h-64 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700">
@@ -1282,7 +1239,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                             @endif
                             <div class="space-y-4">
                                 @if (! $this->useCustomHost)
-                                    <flux:input wire:model.live="hostSearch" label="{{ __('Host / Employee') }}" placeholder="{{ __('Type name to search...') }}" icon="magnifying-glass" />
+                                    <flux:input wire:model.live="hostSearch" label="{{ __('Host / Employee') }}" placeholder="{{ __('Type name to search...') }}" icon="magnifying-glass" autocomplete="off" />
                                     @if ($this->hostSearch !== '')
                                         <div class="max-h-40 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700">
                                             @forelse ($this->availableHosts as $employee)
@@ -1310,7 +1267,7 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                                 <div>
                                     <flux:select wire:model.live="visitType" label="{{ __('Visit type') }}">
                                         <option value="">{{ __('— Select type —') }}</option>
-                                        @foreach (\App\Models\Visit::VISIT_TYPES as $type)
+                                        @foreach (\App\Models\VisitType::options() as $type)
                                             <option value="{{ $type }}">{{ $type }}</option>
                                         @endforeach
                                     </flux:select>
@@ -1572,57 +1529,10 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
                     <p class="mb-4 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Find your name and check out when leaving.') }}</p>
 
                     <div class="mb-4 flex gap-2">
-                        <flux:input wire:model.live="checkoutSearch" placeholder="{{ __('Search by name or host...') }}" icon="magnifying-glass" class="flex-1" />
+                        <flux:input wire:model.live="checkoutSearch" placeholder="{{ __('Search by name or host...') }}" icon="magnifying-glass" class="flex-1" autocomplete="off" />
 
-                        @if (! $this->showQrScanner)
-                            <flux:button variant="outline" wire:click="$set('showQrScanner', true)" icon="qr-code" class="shrink-0" title="{{ __('Scan QR') }}" aria-label="{{ __('Scan QR') }}" />
-                        @endif
+                        <flux:button variant="outline" wire:click="$set('showQrScanner', true)" icon="qr-code" class="shrink-0" title="{{ __('Scan QR') }}" aria-label="{{ __('Scan QR') }}" />
                     </div>
-
-                    @if ($this->showQrScanner)
-                        <div class="mb-4 rounded-lg border border-neutral-200 p-4 dark:border-neutral-700"
-                             x-data="{
-                                 reader: null,
-                                 init() {
-                                     this.$nextTick(() => this.startScanner());
-                                 },
-                                 startScanner() {
-                                     if (typeof Html5Qrcode === 'undefined') return;
-                                     this.reader = new Html5Qrcode('qr-reader');
-                                     this.reader.start(
-                                         { facingMode: 'environment' },
-                                         { fps: 10, qrbox: { width: 250, height: 250 } },
-                                         (decodedText) => {
-                                             try {
-                                                 const url = new URL(decodedText);
-                                                 const token = url.searchParams.get('checkout');
-                                                 if (token) {
-                                                     this.reader.stop().catch(() => {});
-                                                     this.reader = null;
-                                                     $wire.checkOutByToken(token);
-                                                 }
-                                             } catch {}
-                                         },
-                                     ).catch(() => {});
-                                 },
-                                 destroy() {
-                                     if (this.reader) {
-                                         this.reader.stop().catch(() => {});
-                                     }
-                                 }
-                             }">
-                            <div class="mb-2 flex items-center justify-between">
-                                <p class="text-sm font-medium text-neutral-900 dark:text-white">{{ __('Scan QR Code') }}</p>
-                                <flux:button size="sm" variant="danger" x-on:click="destroy(); $wire.$set('showQrScanner', false)">
-                                    {{ __('Close') }}
-                                </flux:button>
-                            </div>
-                            <div id="qr-reader" class="mx-auto max-w-sm overflow-hidden rounded-lg"></div>
-                            <p class="mt-2 text-center text-xs text-neutral-400 dark:text-neutral-500">
-                                {{ __('Point your badge QR code at the camera') }}
-                            </p>
-                        </div>
-                    @endif
 
                     @if ($this->filteredVisitors->isEmpty())
                         <div class="flex flex-col items-center justify-center gap-2 py-16 text-center">
@@ -1830,6 +1740,433 @@ new #[Title('Visitor Kiosk')] #[Layout('layouts::kiosk')] class extends Componen
             @endif
         </flux:modal>
     @endif
+
+    {{-- QR scan overlay (badge scan on the On-site tab).
+         Same shell as the profile / ID / selfie capture modals. --}}
+    <div x-data="{
+            open: @entangle('showQrScanner').live,
+            captureMode: 'camera',
+            cameraActive: false,
+            starting: false,
+            reader: null,
+            scanError: '',
+            init() {
+                this.$watch('open', (value) => {
+                    if (value) {
+                        this.captureMode = 'camera';
+                        this.scanError = '';
+                        this.$nextTick(() => this.startScanner());
+                    } else {
+                        this.destroy();
+                    }
+                });
+            },
+            closeCapture() {
+                this.destroy();
+                this.open = false;
+            },
+            async startScanner() {
+                if (this.reader || this.starting || typeof Html5Qrcode === 'undefined' || !this.open) return;
+                this.starting = true;
+                try {
+                    await window.__qrStopAll();
+                    // Wait until the preview box is laid out with a stable size —
+                    // the library bakes the scan frame from the first-frame size,
+                    // so starting early misplaces the corners until a restart.
+                    let boxW = 0;
+                    for (let i = 0; i < 30; i++) {
+                        if (!this.open || this.captureMode !== 'camera') break;
+                        await new Promise((resolve) => requestAnimationFrame(resolve));
+                        const boxEl = document.getElementById('qr-reader');
+                        const w = boxEl ? boxEl.clientWidth : 0;
+                        const h = boxEl ? boxEl.clientHeight : 0;
+                        if (w > 0 && h > 0 && w === boxW) break;
+                        boxW = w;
+                    }
+                    let started = false;
+                    for (let attempt = 0; attempt < 2 && !started; attempt++) {
+                        if (!this.open || this.captureMode !== 'camera' || !boxW) break;
+                        if (attempt > 0) {
+                            await window.__qrStopAll();
+                            await new Promise((resolve) => setTimeout(resolve, 350));
+                            if (!this.open || this.captureMode !== 'camera') break;
+                        }
+                        const candidate = new Html5Qrcode('qr-reader');
+                        let ok = false;
+                        try {
+                            await candidate.start(
+                                { facingMode: 'environment' },
+                                { fps: 10, qrbox: (vw, vh) => ({ width: Math.max(vw - 60, 120), height: Math.max(vh - 60, 120) }), aspectRatio: 1 },
+                                (decodedText) => this.handleDecoded(decodedText),
+                            );
+                            ok = await this.confirmFrame('qr-reader');
+                        } catch { ok = false; }
+                        if (ok || attempt === 1) {
+                            // Valid frame — or last attempt: a working camera beats
+                            // none, and the frame self-heals on the next open.
+                            this.reader = candidate;
+                            this.cameraActive = true;
+                            window.__qrActiveReader = candidate;
+                            started = true;
+                        } else {
+                            await new Promise((resolve) => setTimeout(resolve, 200));
+                            if (window.__qrActiveReader === candidate) window.__qrActiveReader = null;
+                            await window.__qrStop(candidate);
+                        }
+                    }
+                    if (!started) {
+                        this.reader = null;
+                        this.cameraActive = false;
+                        this.captureMode = 'upload';
+                    }
+                } catch {}
+                this.starting = false;
+            },
+            // The shaded frame is only inserted on the video's first playing
+            // event, so wait for it before judging the geometry.
+            async confirmFrame(boxId) {
+                for (let i = 0; i < 30; i++) {
+                    if (!this.open) return true;
+                    await new Promise((resolve) => setTimeout(resolve, 50));
+                    if (document.getElementById('qr-shaded-region')) break;
+                }
+                return this.frameLooksRight(boxId);
+            },
+            frameLooksRight(boxId) {
+                try {
+                    const box = document.getElementById(boxId);
+                    const shaded = document.getElementById('qr-shaded-region');
+                    if (!box || !shaded) return true;
+                    const bw = box.clientWidth;
+                    if (!bw) return true;
+                    const expected = (bw - Math.max(bw - 60, 120)) / 2;
+                    const cs = getComputedStyle(shaded);
+                    const t = parseFloat(cs.borderTopWidth);
+                    const l = parseFloat(cs.borderLeftWidth);
+                    return Math.abs(t - expected) <= 10 && Math.abs(l - expected) <= 10;
+                } catch { return true; }
+            },
+            frameLooksRight(boxId) {
+                try {
+                    const box = document.getElementById(boxId);
+                    const shaded = document.getElementById('qr-shaded-region');
+                    if (!box || !shaded) return false;
+                    const bw = box.clientWidth;
+                    if (!bw) return false;
+                    const expected = (bw - Math.max(bw - 60, 120)) / 2;
+                    const cs = getComputedStyle(shaded);
+                    const t = parseFloat(cs.borderTopWidth);
+                    const l = parseFloat(cs.borderLeftWidth);
+                    return Math.abs(t - expected) <= 10 && Math.abs(l - expected) <= 10;
+                } catch { return false; }
+            },
+            handleDecoded(decodedText) {
+                try {
+                    const url = new URL(decodedText);
+                    const token = url.searchParams.get('checkout');
+                    if (token) {
+                        this.closeCapture();
+                        $wire.checkOutByToken(token);
+                        return true;
+                    }
+                } catch {}
+                return false;
+            },
+async handleFile(event) {
+                                const file = event.target.files[0];
+                                event.target.value = '';
+                                if (!file || typeof Html5Qrcode === 'undefined') return;
+                                this.scanError = '';
+                                try {
+                                    await this.destroy();
+                                    const fileScanner = new Html5Qrcode('qr-reader');
+                                    let decodedText = '';
+                                    try {
+                                        decodedText = await fileScanner.scanFile(file, true);
+                                    } finally {
+                                        try { fileScanner.clear(); } catch {}
+                                    }
+                                    if (!this.handleDecoded(decodedText)) {
+                                        this.scanError = '{{ __('That QR code is not a valid badge code.') }}';
+                                    }
+                                } catch {
+                                    this.scanError = '{{ __('No QR code found in that image.') }}';
+                                }
+                            },
+                            async destroy() {
+                                this.cameraActive = false;
+                                const reader = this.reader ? Alpine.raw(this.reader) : null;
+                                this.reader = null;
+                                if (reader) {
+                                    await window.__qrStop(reader);
+                                }
+                            }
+        }"
+         x-show="open"
+         x-cloak
+         data-qr-overlay
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+         x-on:click.self="closeCapture()"
+         x-on:keydown.escape.window="if (open) closeCapture()">
+        <div class="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-neutral-900" x-on:click.stop>
+            <div class="flex items-center justify-between px-4 py-3">
+                <p class="text-sm font-semibold text-neutral-900 dark:text-white">{{ __('Scan QR Code') }}</p>
+                <button type="button" x-on:click="closeCapture()" class="flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-300" aria-label="{{ __('Close') }}">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="px-4">
+                <div class="flex rounded-full bg-neutral-100 p-1 text-xs font-medium dark:bg-neutral-800">
+                    <button type="button" x-on:click="captureMode = 'camera'; $nextTick(() => startScanner())" :class="captureMode === 'camera' ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-white' : 'text-neutral-500 dark:text-neutral-400'" class="flex-1 rounded-full px-3 py-1.5 transition-colors">{{ __('Camera') }}</button>
+                    <button type="button" x-on:click="captureMode = 'upload'; destroy()" :class="captureMode === 'upload' ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-white' : 'text-neutral-500 dark:text-neutral-400'" class="flex-1 rounded-full px-3 py-1.5 transition-colors">{{ __('Upload') }}</button>
+                </div>
+            </div>
+            <div class="p-4">
+                <div x-show="captureMode === 'camera'">
+                    <div class="overflow-hidden rounded-xl bg-black">
+                        <div id="qr-reader" wire:ignore class="aspect-square w-full"></div>
+                    </div>
+                    <p x-show="! cameraActive" class="mt-2 text-center text-xs text-neutral-400">{{ __('Camera unavailable — upload a QR image instead.') }}</p>
+                    <div class="mt-3 flex gap-2">
+                        <flux:button variant="ghost" x-on:click="closeCapture()">{{ __('Cancel') }}</flux:button>
+                        <flux:button variant="primary" class="flex-1" x-on:click="reader ? destroy() : startScanner()" x-bind:disabled="starting">
+                            <span x-show="! reader">{{ __('Start camera') }}</span>
+                            <span x-show="reader">{{ __('Stop camera') }}</span>
+                        </flux:button>
+                    </div>
+                </div>
+                <div x-show="captureMode === 'upload'">
+                    <label class="flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-8 text-center transition-colors hover:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/50 dark:hover:border-neutral-600">
+                        <svg class="h-8 w-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+                        <span class="text-sm font-medium text-neutral-700 dark:text-neutral-300">{{ __('Tap to choose a QR image') }}</span>
+                        <span class="text-xs text-neutral-400">JPG or PNG</span>
+                        <input type="file" accept="image/*" class="hidden" x-on:change="handleFile">
+                    </label>
+                    <p x-show="scanError" x-text="scanError" class="mt-2 text-center text-xs text-red-500"></p>
+                    <div class="mt-3 flex gap-2">
+                        <flux:button variant="ghost" x-on:click="closeCapture()">{{ __('Cancel') }}</flux:button>
+                        <flux:button variant="ghost" x-on:click="captureMode = 'camera'; $nextTick(() => startScanner())">{{ __('Use camera instead') }}</flux:button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Booking QR scan overlay (booking scan on the check-in tab).
+         Same shell as the profile / ID / selfie capture modals. --}}
+    <div x-data="{
+            open: @entangle('showPreQrScanner').live,
+            captureMode: 'camera',
+            cameraActive: false,
+            starting: false,
+            reader: null,
+            scanError: '',
+            init() {
+                this.$watch('open', (value) => {
+                    if (value) {
+                        this.captureMode = 'camera';
+                        this.scanError = '';
+                        this.$nextTick(() => this.startScanner());
+                    } else {
+                        this.destroy();
+                    }
+                });
+            },
+            closeCapture() {
+                this.destroy();
+                this.open = false;
+            },
+            async startScanner() {
+                if (this.reader || this.starting || typeof Html5Qrcode === 'undefined' || !this.open) return;
+                this.starting = true;
+                try {
+                    await window.__qrStopAll();
+                    // Wait until the preview box is laid out with a stable size —
+                    // the library bakes the scan frame from the first-frame size,
+                    // so starting early misplaces the corners until a restart.
+                    let boxW = 0;
+                    for (let i = 0; i < 30; i++) {
+                        if (!this.open || this.captureMode !== 'camera') break;
+                        await new Promise((resolve) => requestAnimationFrame(resolve));
+                        const boxEl = document.getElementById('pre-qr-reader');
+                        const w = boxEl ? boxEl.clientWidth : 0;
+                        const h = boxEl ? boxEl.clientHeight : 0;
+                        if (w > 0 && h > 0 && w === boxW) break;
+                        boxW = w;
+                    }
+                    let started = false;
+                    for (let attempt = 0; attempt < 2 && !started; attempt++) {
+                        if (!this.open || this.captureMode !== 'camera' || !boxW) break;
+                        if (attempt > 0) {
+                            await window.__qrStopAll();
+                            await new Promise((resolve) => setTimeout(resolve, 350));
+                            if (!this.open || this.captureMode !== 'camera') break;
+                        }
+                        const candidate = new Html5Qrcode('pre-qr-reader');
+                        let ok = false;
+                        try {
+                            await candidate.start(
+                                { facingMode: 'environment' },
+                                { fps: 10, qrbox: (vw, vh) => ({ width: Math.max(vw - 60, 120), height: Math.max(vh - 60, 120) }), aspectRatio: 1 },
+                                (decodedText) => this.handleDecoded(decodedText),
+                            );
+                            ok = await this.confirmFrame('pre-qr-reader');
+                        } catch { ok = false; }
+                        if (ok || attempt === 1) {
+                            // Valid frame — or last attempt: a working camera beats
+                            // none, and the frame self-heals on the next open.
+                            this.reader = candidate;
+                            this.cameraActive = true;
+                            window.__qrActiveReader = candidate;
+                            started = true;
+                        } else {
+                            await new Promise((resolve) => setTimeout(resolve, 200));
+                            if (window.__qrActiveReader === candidate) window.__qrActiveReader = null;
+                            await window.__qrStop(candidate);
+                        }
+                    }
+                    if (!started) {
+                        this.reader = null;
+                        this.cameraActive = false;
+                        this.captureMode = 'upload';
+                    }
+                } catch {}
+                this.starting = false;
+            },
+            // The shaded frame is only inserted on the video's first playing
+            // event, so wait for it before judging the geometry.
+            async confirmFrame(boxId) {
+                for (let i = 0; i < 30; i++) {
+                    if (!this.open) return true;
+                    await new Promise((resolve) => setTimeout(resolve, 50));
+                    if (document.getElementById('qr-shaded-region')) break;
+                }
+                return this.frameLooksRight(boxId);
+            },
+            frameLooksRight(boxId) {
+                try {
+                    const box = document.getElementById(boxId);
+                    const shaded = document.getElementById('qr-shaded-region');
+                    if (!box || !shaded) return true;
+                    const bw = box.clientWidth;
+                    if (!bw) return true;
+                    const expected = (bw - Math.max(bw - 60, 120)) / 2;
+                    const cs = getComputedStyle(shaded);
+                    const t = parseFloat(cs.borderTopWidth);
+                    const l = parseFloat(cs.borderLeftWidth);
+                    return Math.abs(t - expected) <= 10 && Math.abs(l - expected) <= 10;
+                } catch { return true; }
+            },
+            frameLooksRight(boxId) {
+                try {
+                    const box = document.getElementById(boxId);
+                    const shaded = document.getElementById('qr-shaded-region');
+                    if (!box || !shaded) return false;
+                    const bw = box.clientWidth;
+                    if (!bw) return false;
+                    const expected = (bw - Math.max(bw - 60, 120)) / 2;
+                    const cs = getComputedStyle(shaded);
+                    const t = parseFloat(cs.borderTopWidth);
+                    const l = parseFloat(cs.borderLeftWidth);
+                    return Math.abs(t - expected) <= 10 && Math.abs(l - expected) <= 10;
+                } catch { return false; }
+            },
+            handleDecoded(decodedText) {
+                try {
+                    const url = new URL(decodedText);
+                    const booking = url.searchParams.get('booking') || url.searchParams.get('pre') || url.searchParams.get('scheduled');
+                    const checkout = url.searchParams.get('checkout');
+                    if (booking || checkout) {
+                        this.closeCapture();
+                        if (booking) {
+                            $wire.scanBookingByToken(booking);
+                        } else {
+                            $wire.selectVisitorByQrToken(checkout);
+                        }
+                        return true;
+                    }
+                } catch {}
+                return false;
+            },
+async handleFile(event) {
+                                const file = event.target.files[0];
+                                event.target.value = '';
+                                if (!file || typeof Html5Qrcode === 'undefined') return;
+                                this.scanError = '';
+                                try {
+                                    await this.destroy();
+                                    const fileScanner = new Html5Qrcode('pre-qr-reader');
+                                    let decodedText = '';
+                                    try {
+                                        decodedText = await fileScanner.scanFile(file, true);
+                                    } finally {
+                                        try { fileScanner.clear(); } catch {}
+                                    }
+                                    if (!this.handleDecoded(decodedText)) {
+                                        this.scanError = '{{ __('That QR code is not a valid booking code.') }}';
+                                    }
+                                } catch {
+                                    this.scanError = '{{ __('No QR code found in that image.') }}';
+                                }
+                            },
+                            async destroy() {
+                                this.cameraActive = false;
+                                const reader = this.reader ? Alpine.raw(this.reader) : null;
+                                this.reader = null;
+                                if (reader) {
+                                    await window.__qrStop(reader);
+                                }
+                            }
+        }"
+         x-show="open"
+         x-cloak
+         data-qr-overlay
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+         x-on:click.self="closeCapture()"
+         x-on:keydown.escape.window="if (open) closeCapture()">
+        <div class="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-neutral-900" x-on:click.stop>
+            <div class="flex items-center justify-between px-4 py-3">
+                <p class="text-sm font-semibold text-neutral-900 dark:text-white">{{ __('Scan Booking QR') }}</p>
+                <button type="button" x-on:click="closeCapture()" class="flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-300" aria-label="{{ __('Close') }}">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="px-4">
+                <div class="flex rounded-full bg-neutral-100 p-1 text-xs font-medium dark:bg-neutral-800">
+                    <button type="button" x-on:click="captureMode = 'camera'; $nextTick(() => startScanner())" :class="captureMode === 'camera' ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-white' : 'text-neutral-500 dark:text-neutral-400'" class="flex-1 rounded-full px-3 py-1.5 transition-colors">{{ __('Camera') }}</button>
+                    <button type="button" x-on:click="captureMode = 'upload'; destroy()" :class="captureMode === 'upload' ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-700 dark:text-white' : 'text-neutral-500 dark:text-neutral-400'" class="flex-1 rounded-full px-3 py-1.5 transition-colors">{{ __('Upload') }}</button>
+                </div>
+            </div>
+            <div class="p-4">
+                <div x-show="captureMode === 'camera'">
+                    <div class="overflow-hidden rounded-xl bg-black">
+                        <div id="pre-qr-reader" wire:ignore class="aspect-square w-full"></div>
+                    </div>
+                    <p x-show="! cameraActive" class="mt-2 text-center text-xs text-neutral-400">{{ __('Camera unavailable — upload a QR image instead.') }}</p>
+                    <div class="mt-3 flex gap-2">
+                        <flux:button variant="ghost" x-on:click="closeCapture()">{{ __('Cancel') }}</flux:button>
+                        <flux:button variant="primary" class="flex-1" x-on:click="reader ? destroy() : startScanner()" x-bind:disabled="starting">
+                            <span x-show="! reader">{{ __('Start camera') }}</span>
+                            <span x-show="reader">{{ __('Stop camera') }}</span>
+                        </flux:button>
+                    </div>
+                </div>
+                <div x-show="captureMode === 'upload'">
+                    <label class="flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-4 py-8 text-center transition-colors hover:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/50 dark:hover:border-neutral-600">
+                        <svg class="h-8 w-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+                        <span class="text-sm font-medium text-neutral-700 dark:text-neutral-300">{{ __('Tap to choose a QR image') }}</span>
+                        <span class="text-xs text-neutral-400">JPG or PNG</span>
+                        <input type="file" accept="image/*" class="hidden" x-on:change="handleFile">
+                    </label>
+                    <p x-show="scanError" x-text="scanError" class="mt-2 text-center text-xs text-red-500"></p>
+                    <div class="mt-3 flex gap-2">
+                        <flux:button variant="ghost" x-on:click="closeCapture()">{{ __('Cancel') }}</flux:button>
+                        <flux:button variant="ghost" x-on:click="captureMode = 'camera'; $nextTick(() => startScanner())">{{ __('Use camera instead') }}</flux:button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     {{-- ID Scan Modal --}}
     <flux:modal wire:model="showIdScanModal" name="id-scan" class="w-full max-w-2xl">

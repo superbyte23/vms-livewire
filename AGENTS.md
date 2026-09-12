@@ -37,6 +37,13 @@ composer dev            # runs serve + queue:listen + vite concurrently
 - **View namespaces:** `pages::` → `resources/views/pages/`, `layouts::` → `resources/views/layouts/`, `flux::` → `resources/views/flux/`, `components::` → `resources/views/components/`.
 - **Custom Blade components** (`<x-layouts::app>`, `<x-layouts::auth>`, etc.) for layout inheritance.
 
+## Icons (Tabler by default)
+
+- **Use Tabler icons for all new icon work** via `superbyte/blade-tabler-icons` (path repo at `packages/blade-tabler-icons`, 6,184 outline + filled icons).
+- `<x-tabler-heart class="w-5 h-5" />`, `@svg('tabler-'.$name, '...')` for dynamic names, or Flux props after generating views: `php artisan tabler-icons:flux star heart` → `icon="tabler.star"` / `icon="tabler-filled.trash"`.
+- Generated Flux views default to 16px (`size-4`); pass `class=` to override.
+- Browse names at tabler.io/icons.
+
 ## Testing quirks
 
 - `./vendor/bin/pest` runs all tests (no `phpunit` wrapper needed).

@@ -171,9 +171,27 @@ new class extends Component
     #[Computed]
     public function selectedDayOnSite(): Collection
     {
+        if ($this->selectedDate === null || $this->selectedDate !== now()->toDateString()) {
+            return new Collection;
+        }
+
         return Visit::with('visitor')
             ->where('status', 'checked_in')
             ->orderByDesc('checked_in_at')
+            ->get();
+    }
+
+    #[Computed]
+    public function selectedDayCheckouts(): Collection
+    {
+        if (! $this->selectedDate) {
+            return new Collection;
+        }
+
+        return Visit::with('visitor')
+            ->where('status', 'checked_out')
+            ->whereDate('checked_out_at', $this->selectedDate)
+            ->orderByDesc('checked_out_at')
             ->get();
     }
 }; ?>
@@ -356,6 +374,32 @@ new class extends Component
                                 <span class="shrink-0 rounded-md bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">{{ $visit->badge_number }}</span>
                             @endif
                             <span class="shrink-0 text-xs text-neutral-400 dark:text-neutral-500">{{ $visit->checked_in_at ? $visit->checked_in_at->format('g:i A') : '—' }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
+
+        @if ($this->selectedDayCheckouts->isNotEmpty())
+            <div class="mt-5">
+                <p class="mb-2 flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400"><span class="h-1.5 w-1.5 rounded-full bg-neutral-400"></span>Checkouts ({{ $this->selectedDayCheckouts->count() }})</p>
+                <ul class="space-y-1.5">
+                    @foreach ($this->selectedDayCheckouts as $visit)
+                        <li wire:key="day-checkout-{{ $visit->id }}" class="flex items-center gap-3 rounded-lg bg-neutral-50 px-3 py-2.5 text-sm ring-1 ring-neutral-200/60 dark:bg-neutral-800/60 dark:ring-neutral-700/60">
+                            @php $selfie = $visit->photo ?: $visit->visitor?->photo; @endphp
+                            @if ($selfie)
+                                <img src="{{ $selfie }}" alt="" class="h-8 w-8 shrink-0 rounded-full border border-neutral-200 object-cover dark:border-neutral-700">
+                            @else
+                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-[11px] font-bold text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">{{ substr($visit->visitor?->name ?? '??', 0, 2) }}</span>
+                            @endif
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate font-medium text-neutral-900 dark:text-white">{{ $visit->visitor?->name ?? 'Deleted visitor' }}</p>
+                                <p class="truncate text-xs text-neutral-500 dark:text-neutral-400">{{ $visit->visitor?->company ?: '—' }}</p>
+                            </div>
+                            @if ($visit->badge_number)
+                                <span class="shrink-0 rounded-md bg-neutral-200 px-2 py-0.5 text-xs font-bold text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300">{{ $visit->badge_number }}</span>
+                            @endif
+                            <span class="shrink-0 text-xs text-neutral-400 dark:text-neutral-500">{{ $visit->checked_out_at ? $visit->checked_out_at->format('g:i A') : '—' }}</span>
                         </li>
                     @endforeach
                 </ul>

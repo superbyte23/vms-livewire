@@ -55,6 +55,13 @@ new class extends Component
     public string $checkinPhoto = '';
 
     /**
+     * Event dispatched after a successful booking. Hosts that run two
+     * wizards on the same page (e.g. dashboard schedule + embedded kiosk)
+     * pass a scoped event name so listeners can tell them apart.
+     */
+    public string $registeredEvent = 'visitor-registered';
+
+    /**
      * Single rulebook for the wizard so inline error helpers stay reactive
      * while typing (see updated()) and identical on Next/Confirm.
      *
@@ -306,7 +313,7 @@ new class extends Component
         $this->createdBookingId = (string) $booking->id;
         $this->step = 5;
 
-        $this->dispatch('visitor-registered', bookingId: (string) $booking->id);
+        $this->dispatch($this->registeredEvent, bookingId: (string) $booking->id);
     }
 
     #[Computed]
@@ -418,7 +425,7 @@ new class extends Component
             @elseif ($this->step === 2)
                 <flux:select wire:model.live="visitType" label="{{ __('Visit Type or Purpose of Visit (required)') }}">
                     <option value="">{{ __('— Select type —') }}</option>
-                    @foreach (\App\Models\Visit::VISIT_TYPES as $type)
+                    @foreach (\App\Models\VisitType::options() as $type)
                         <option value="{{ $type }}">{{ $type }}</option>
                     @endforeach
                 </flux:select>
@@ -448,7 +455,7 @@ new class extends Component
                         </flux:callout>
                     @endif
                 @else
-                    <flux:input wire:model.live.debounce.300ms="visitorSearch" label="{{ __('Search your visitor record') }}" placeholder="{{ __('Type your name, email, or phone...') }}" icon="magnifying-glass" />
+                    <flux:input wire:model.live.debounce.300ms="visitorSearch" label="{{ __('Search your visitor record') }}" placeholder="{{ __('Type your name, email, or phone...') }}" icon="magnifying-glass" autocomplete="off" />
                     <flux:error name="selectedVisitorId" />
                     @if (count($this->visitorMatches) > 0)
                         <div class="overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-700">

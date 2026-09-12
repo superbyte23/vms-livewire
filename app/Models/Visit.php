@@ -21,6 +21,10 @@ class Visit extends Model
 
     public const STATUS_CANCELLED = 'cancelled';
 
+    /**
+     * Default visit types seeded into the manageable `visit_types` table.
+     * Runtime dropdowns read VisitType::options() instead.
+     */
     public const VISIT_TYPES = [
         'Courtesy Visit',
         'Internship',

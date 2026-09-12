@@ -134,7 +134,7 @@ Visitor Management System (VMS) built on Laravel 13 + Livewire 4 SFC + Flux UI v
 | Component | Priority | Status |
 |---|---|---|
 | QR code badge generation + scanning for check-in/out | Medium | ✅ |
-| Advanced reporting with charts | Medium | ✅ |
+| Advanced reporting with charts (`pages::reports` — KPIs, check-ins/day, status mix, peak hours, top hosts/types, CSV export) | Medium | ✅ |
 | Watchlist management UI (`pages::watchlist`) with: | Low | ✅ |
 | &nbsp;&nbsp;— Paginated flagged visitors list | Low | ✅ |
 | &nbsp;&nbsp;— Search through flagged visitors | Low | ✅ |

@@ -1,7 +1,9 @@
 <?php
 
 use App\Models\Visit;
+use App\Services\VisitorCheckOutService;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -62,8 +64,28 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
 
     public function clearFilters(): void
     {
-        $this->reset('search', 'statusFilter', 'dateFrom', 'dateTo');
+        $this->reset('search', 'statusFilter', 'dateFrom', 'dateTo', 'selected', 'selectAll');
         $this->resetPage();
+    }
+
+    public function rescheduleBooking(string $id): void
+    {
+        Visit::scheduled()->findOrFail($id)->update(['expected_date' => today()->toDateString()]);
+
+        Flux::toast(variant: 'success', text: 'Booking moved to today.');
+    }
+
+    public function checkOutVisit(string $id): void
+    {
+        $visit = Visit::with('visitor')->findOrFail($id);
+
+        if ($visit->status !== 'checked_in') {
+            return;
+        }
+
+        app(VisitorCheckOutService::class)->checkOut($visit);
+
+        Flux::toast(variant: 'success', text: __(':name has been checked out.', ['name' => $visit->visitor?->name ?? 'Visitor']));
     }
 
     public function changeStatus(string $id): void
@@ -131,6 +153,7 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
         $this->selected = [];
         $this->selectAll = false;
         $this->showBulkDeleteModal = false;
+        $this->resetPage();
         Flux::toast(variant: 'success', text: 'Selected visit records deleted successfully.');
     }
 
@@ -166,16 +189,33 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
         $this->showClearAllModal = false;
     }
 
+    public function closeViewModal(): void
+    {
+        $this->reset('showViewModal', 'viewingVisitId');
+    }
+
+    protected function baseQuery(): Builder
+    {
+        return Visit::with('visitor')
+            ->when($this->search, fn ($q) => $q->where(fn ($qq) => $qq
+                ->search($this->search)
+                ->orWhere('host', 'like', '%'.$this->search.'%')
+                ->orWhere('badge_number', 'like', '%'.$this->search.'%')))
+            ->when($this->statusFilter === 'overdue',
+                fn ($q) => $q->scheduled()->whereDate('expected_date', '<', today()),
+                fn ($q) => $q->when($this->statusFilter, fn ($qq) => $qq->where('status', $this->statusFilter)))
+            ->when($this->dateFrom, fn ($q) => $q->where(fn ($qq) => $qq
+                ->whereDate('expected_date', '>=', $this->dateFrom)
+                ->orWhereDate('created_at', '>=', $this->dateFrom)))
+            ->when($this->dateTo, fn ($q) => $q->where(fn ($qq) => $qq
+                ->whereDate('expected_date', '<=', $this->dateTo)
+                ->orWhereDate('created_at', '<=', $this->dateTo)));
+    }
+
     #[Computed]
     public function visits(): LengthAwarePaginator
     {
-        return Visit::with('visitor')
-            ->when($this->search, fn ($q) => $q->search($this->search))
-            ->when($this->statusFilter, fn ($q) => $q->where('status', $this->statusFilter))
-            ->when($this->dateFrom, fn ($q) => $q->whereDate('created_at', '>=', $this->dateFrom))
-            ->when($this->dateTo, fn ($q) => $q->whereDate('created_at', '<=', $this->dateTo))
-            ->orderByDesc('created_at')
-            ->paginate(10);
+        return $this->baseQuery()->orderByDesc('created_at')->paginate(10);
     }
 
     #[Computed]
@@ -200,13 +240,7 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
 
     public function exportCsv(): StreamedResponse
     {
-        $visits = Visit::with('visitor')
-            ->when($this->search, fn ($q) => $q->search($this->search))
-            ->when($this->statusFilter, fn ($q) => $q->where('status', $this->statusFilter))
-            ->when($this->dateFrom, fn ($q) => $q->whereDate('created_at', '>=', $this->dateFrom))
-            ->when($this->dateTo, fn ($q) => $q->whereDate('created_at', '<=', $this->dateTo))
-            ->orderByDesc('created_at')
-            ->get();
+        $visits = $this->baseQuery()->orderByDesc('created_at')->get();
 
         $headers = ['Name', 'Email', 'Phone', 'Company', 'Badge', 'Host', 'Visit Type', 'Purpose', 'Expected Date', 'Status', 'Checked In', 'Checked Out'];
 
@@ -250,22 +284,23 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
     {{-- Filters --}}
     <div class="flex flex-wrap items-end gap-3">
         <div class="min-w-48 flex-1">
-            <flux:input wire:model.live.debounce.300ms="search" placeholder="Search by name, email, host, badge..." icon="magnifying-glass" />
+            <flux:input wire:model.live.debounce.300ms="search" placeholder="Search by name, email, host, badge..." icon="magnifying-glass" autocomplete="off" />
         </div>
         <div class="w-40">
-            <flux:select wire:model.change="statusFilter" placeholder="All statuses">
+            <flux:select wire:model.live="statusFilter" placeholder="All statuses">
                 <option value="">All statuses</option>
                 <option value="scheduled">Scheduled</option>
+                <option value="overdue">Overdue</option>
                 <option value="checked_in">On-site</option>
                 <option value="checked_out">Checked Out</option>
                 <option value="cancelled">Cancelled</option>
             </flux:select>
         </div>
         <div class="w-40">
-            <x-date-picker wire:model.change="dateFrom" placeholder="From date" :allow-past="true" />
+            <x-date-picker wire:model="dateFrom" placeholder="From date" :allow-past="true" />
         </div>
         <div class="w-40">
-            <x-date-picker wire:model.change="dateTo" placeholder="To date" :allow-past="true" />
+            <x-date-picker wire:model="dateTo" placeholder="To date" :allow-past="true" />
         </div>
         @if ($this->search || $this->statusFilter || $this->dateFrom || $this->dateTo)
             <flux:button variant="ghost" wire:click="clearFilters" class="shrink-0">
@@ -321,6 +356,7 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
                     <flux:table.column class="hidden md:table-cell">Host</flux:table.column>
                     <flux:table.column class="hidden lg:table-cell">Company</flux:table.column>
                     <flux:table.column>Status</flux:table.column>
+                    <flux:table.column class="hidden md:table-cell">Expected</flux:table.column>
                     <flux:table.column align="end">Checked In</flux:table.column>
                     <flux:table.column align="end" class="hidden lg:table-cell">Checked Out</flux:table.column>
                     <flux:table.column align="end">Actions</flux:table.column>
@@ -334,8 +370,9 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
                             </flux:table.cell>
                             <flux:table.cell variant="strong">
                                 <div class="flex items-center gap-3">
-                                    @if ($visit->photo)
-                                        <img src="{{ $visit->photo }}" alt="" class="h-9 w-9 shrink-0 cursor-pointer rounded-full object-cover border border-neutral-200 transition-opacity hover:opacity-80 dark:border-neutral-700" x-on:click="previewPhoto = $event.target.src">
+                                    @php $avatar = $visit->photo ?: $visit->visitor?->photo; @endphp
+                                    @if ($avatar)
+                                        <img src="{{ $avatar }}" alt="" class="h-9 w-9 shrink-0 cursor-pointer rounded-full object-cover border border-neutral-200 transition-opacity hover:opacity-80 dark:border-neutral-700" x-on:click="previewPhoto = $event.target.src">
                                     @else
                                         <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-xs font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
                                             {{ substr($visit->visitor?->name ?? '??', 0, 2) }}
@@ -366,11 +403,18 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
                             <flux:table.cell class="hidden md:table-cell">{{ $visit->host ?: '—' }}</flux:table.cell>
                             <flux:table.cell class="hidden lg:table-cell">{{ $visit->visitor?->company ?: '—' }}</flux:table.cell>
                             <flux:table.cell class="py-0">
+                                @php $isOverdue = $visit->status === 'scheduled' && $visit->expected_date && $visit->expected_date->lt(today()); @endphp
                                 @if ($visit->status === 'scheduled')
                                     <span class="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
                                         <span class="h-1.5 w-1.5 rounded-full bg-blue-500"></span>
                                         Scheduled
                                     </span>
+                                    @if ($isOverdue)
+                                        <span class="ml-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                            <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+                                            Overdue
+                                        </span>
+                                    @endif
                                 @elseif ($visit->status === 'cancelled')
                                     <span class="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
                                         Cancelled
@@ -396,6 +440,13 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
                                     </button>
                                 @endif
                             </flux:table.cell>
+                            <flux:table.cell align="end" class="hidden md:table-cell">
+                                @if ($visit->expected_date)
+                                    <span class="{{ ($visit->status === 'scheduled' && $visit->expected_date->lt(today())) ? 'font-medium text-amber-700 dark:text-amber-400' : '' }}">{{ $visit->expected_date->format('M j, Y') }}</span>
+                                @else
+                                    <span class="text-neutral-300 dark:text-neutral-600">—</span>
+                                @endif
+                            </flux:table.cell>
                             <flux:table.cell align="end">{{ $visit->checked_in_at?->format('M j, g:i A') ?: '—' }}</flux:table.cell>
                             <flux:table.cell align="end" class="hidden lg:table-cell">{{ $visit->checked_out_at?->format('M j, g:i A') ?: '—' }}</flux:table.cell>
                             <flux:table.cell align="end">
@@ -406,8 +457,18 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
                                             View
                                         </flux:menu.item>
                                         @if ($visit->status === 'scheduled')
+                                            @if ($visit->expected_date && $visit->expected_date->lt(today()))
+                                                <flux:menu.item icon="calendar" wire:click="rescheduleBooking('{{ $visit->id }}')">
+                                                    Move to today
+                                                </flux:menu.item>
+                                            @endif
                                             <flux:menu.item icon="x-circle" wire:click="cancelBooking('{{ $visit->id }}')" wire:confirm="Cancel this booking?">
                                                 Cancel booking
+                                            </flux:menu.item>
+                                        @endif
+                                        @if ($visit->status === 'checked_in')
+                                            <flux:menu.item icon="arrow-right-end-on-rectangle" wire:click="checkOutVisit('{{ $visit->id }}')" wire:confirm="Check out {{ $visit->visitor?->name ?? 'this visitor' }}?">
+                                                Check out
                                             </flux:menu.item>
                                         @endif
                                         <flux:menu.separator />
@@ -430,13 +491,31 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
             <flux:heading size="lg">Visit Details</flux:heading>
 
             <div class="mt-6 space-y-4">
-                @if ($this->viewingVisit->photo)
-                    <div class="flex justify-center">
-                        <img src="{{ $this->viewingVisit->photo }}" alt="Visit selfie" class="h-24 w-24 rounded-full object-cover border border-neutral-200 dark:border-neutral-700">
+                @php
+                    $modalSelfie = $this->viewingVisit->photo;
+                    $modalProfile = $this->viewingVisit->visitor?->photo;
+                    $modalIsOverdue = $this->viewingVisit->status === 'scheduled' && $this->viewingVisit->expected_date && $this->viewingVisit->expected_date->lt(today());
+                @endphp
+                @if ($modalSelfie || $modalProfile)
+                    <div class="flex items-start justify-center gap-6">
+                        @if ($modalSelfie)
+                            <div class="text-center">
+                                <img src="{{ $modalSelfie }}" alt="Visit selfie" class="h-24 w-24 rounded-full object-cover border border-neutral-200 dark:border-neutral-700">
+                                <p class="mt-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">{{ __('Check-in selfie') }}</p>
+                            </div>
+                        @endif
+                        @if ($modalProfile)
+                            <div class="text-center">
+                                <img src="{{ $modalProfile }}" alt="Visitor photo" class="h-24 w-24 rounded-full object-cover border border-neutral-200 dark:border-neutral-700">
+                                <p class="mt-1.5 text-xs font-medium text-neutral-500 dark:text-neutral-400">{{ __('Profile photo') }}</p>
+                            </div>
+                        @endif
                     </div>
-                @elseif ($this->viewingVisit->visitor?->photo)
-                    <div class="flex justify-center">
-                        <img src="{{ $this->viewingVisit->visitor->photo }}" alt="Visitor photo" class="h-24 w-24 rounded-full object-cover border border-neutral-200 dark:border-neutral-700">
+                @endif
+
+                @if ($modalIsOverdue)
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+                        <p class="text-xs font-medium text-amber-700 dark:text-amber-400">{{ __('Scheduled date has passed (:date). Reschedule or cancel this booking.', ['date' => $this->viewingVisit->expected_date->format('M j, Y')]) }}</p>
                     </div>
                 @endif
 
@@ -509,7 +588,30 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
                         <flux:text variant="label">Checked Out</flux:text>
                         <flux:text>{{ $this->viewingVisit->checked_out_at?->format('M j, Y g:i A') ?: '—' }}</flux:text>
                     </div>
+                    @if ($this->viewingVisit->checked_in_at && $this->viewingVisit->checked_out_at)
+                        @php $visitMins = $this->viewingVisit->checked_in_at->diffInMinutes($this->viewingVisit->checked_out_at); @endphp
+                        <div>
+                            <flux:text variant="label">Duration</flux:text>
+                            <flux:text>{{ $visitMins >= 60 ? intdiv($visitMins, 60).'h '.($visitMins % 60).'m' : $visitMins.'m' }}</flux:text>
+                        </div>
+                    @endif
+                    @if ($this->viewingVisit->visitor?->government_id)
+                        <div>
+                            <flux:text variant="label">Government ID</flux:text>
+                            <flux:text>{{ $this->viewingVisit->visitor->government_id }}</flux:text>
+                        </div>
+                    @endif
                 </div>
+
+                @if ($this->viewingVisit->visitor?->qr_code_token)
+                    <div class="flex items-center gap-4 rounded-xl border border-neutral-200 p-3 dark:border-neutral-700">
+                        <img src="{{ route('qr.code', $this->viewingVisit->visitor->qr_code_token) }}" alt="Visitor QR code" class="h-20 w-20 shrink-0 rounded-lg border border-neutral-200 dark:border-neutral-700">
+                        <div class="text-xs text-neutral-500 dark:text-neutral-400">
+                            <p class="font-medium text-neutral-700 dark:text-neutral-300">{{ __('Badge QR code') }}</p>
+                            <p class="mt-0.5">{{ __('Scan at the kiosk to check in or out.') }}</p>
+                        </div>
+                    </div>
+                @endif
 
                 @if ($this->viewingVisit->notes)
                     <div>
@@ -528,8 +630,22 @@ new #[Title('Visits')] #[Layout('layouts::app')] class extends Component
                 @endif
             </div>
 
-            <div class="mt-6 flex justify-end">
-                <flux:button variant="ghost" x-on:click="$flux.modal('view-visitor-log').close()">
+            <div class="mt-6 flex flex-wrap gap-2 justify-end">
+                @if ($this->viewingVisit->status === 'scheduled')
+                    @if ($modalIsOverdue)
+                        <flux:button variant="outline" wire:click="rescheduleBooking('{{ $this->viewingVisit->id }}')">
+                            {{ __('Move to today') }}
+                        </flux:button>
+                    @endif
+                    <flux:button variant="danger" wire:click="cancelBooking('{{ $this->viewingVisit->id }}')" wire:confirm="{{ __('Cancel this booking?') }}">
+                        {{ __('Cancel booking') }}
+                    </flux:button>
+                @elseif ($this->viewingVisit->status === 'checked_in')
+                    <flux:button variant="primary" wire:click="checkOutVisit('{{ $this->viewingVisit->id }}')" wire:confirm="{{ __('Check out this visitor?') }}">
+                        {{ __('Check out') }}
+                    </flux:button>
+                @endif
+                <flux:button variant="ghost" wire:click="closeViewModal">
                     Close
                 </flux:button>
             </div>

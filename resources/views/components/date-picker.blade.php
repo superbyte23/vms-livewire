@@ -12,7 +12,7 @@
 <div x-data="{
     open: false,
     mode: 'days',
-    selected: @if ($model) @entangle($model) @else '' @endif,
+    selected: @if ($model) @entangle($model).live @else '' @endif,
     viewYear: null,
     viewMonth: null,
     init() {

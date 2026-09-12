@@ -181,7 +181,7 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
     {{-- Search --}}
     <div class="flex flex-wrap items-end gap-3">
         <div class="min-w-48 flex-1">
-            <flux:input wire:model.live.debounce.300ms="search" placeholder="Search watchlist..." icon="magnifying-glass" />
+            <flux:input wire:model.live.debounce.300ms="search" placeholder="Search watchlist..." icon="magnifying-glass" autocomplete="off" />
         </div>
     </div>
 
@@ -392,7 +392,7 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
         <flux:text class="mt-2">Search visitors to flag on the watchlist.</flux:text>
 
         <div class="mt-6 space-y-4">
-            <flux:input wire:model.live.debounce.300ms="addSearch" placeholder="Search visitors..." icon="magnifying-glass" />
+            <flux:input wire:model.live.debounce.300ms="addSearch" placeholder="Search visitors..." icon="magnifying-glass" autocomplete="off" />
 
             @if ($this->unflaggedCandidates->isEmpty())
                 <p class="py-4 text-center text-sm text-neutral-400 dark:text-neutral-500">
