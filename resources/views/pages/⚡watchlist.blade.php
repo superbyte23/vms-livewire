@@ -284,7 +284,7 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
         @endif
 
     {{-- View Modal --}}
-    <flux:modal wire:model="showViewModal" name="view-flagged" class="min-w-sm">
+    <flux:modal wire:model="showViewModal" name="view-flagged" class="max-w-2xl">
         @if ($this->viewingVisitor)
             <flux:heading size="lg">Flagged Visitor Details</flux:heading>
 
@@ -356,7 +356,7 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
     </flux:modal>
 
     {{-- Edit Notes Modal --}}
-    <flux:modal wire:model="showEditNotesModal" name="edit-notes" class="min-w-sm">
+    <flux:modal wire:model="showEditNotesModal" name="edit-notes" class="max-w-2xl">
         <flux:heading size="lg">Edit Watchlist Notes</flux:heading>
         <flux:text class="mt-2">Update the notes for this flagged visitor.</flux:text>
 
@@ -371,7 +371,7 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
     </flux:modal>
 
     {{-- Unflag Confirmation Modal --}}
-    <flux:modal wire:model="showUnflagModal" name="unflag-visitor" class="min-w-sm">
+    <flux:modal wire:model="showUnflagModal" name="unflag-visitor" class="max-w-lg">
         @if ($this->unflaggingVisitor)
             <flux:heading size="lg">Remove from Watchlist</flux:heading>
             <flux:text class="mt-2">
@@ -387,7 +387,7 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
     </flux:modal>
 
     {{-- Add to Watchlist Modal --}}
-    <flux:modal wire:model="showAddModal" name="add-watchlist" class="min-w-sm">
+    <flux:modal wire:model="showAddModal" name="add-watchlist" class="max-w-2xl">
         <flux:heading size="lg">Add to Watchlist</flux:heading>
         <flux:text class="mt-2">Search visitors to flag on the watchlist.</flux:text>
 
@@ -432,7 +432,7 @@ new #[Title('Watchlist')] #[Layout('layouts::app')] class extends Component {
     </flux:modal>
 
     {{-- Bulk Unflag Confirmation Modal --}}
-    <flux:modal wire:model="showBulkUnflagModal" name="bulk-unflag-watchlist" class="min-w-sm">
+    <flux:modal wire:model="showBulkUnflagModal" name="bulk-unflag-watchlist" class="max-w-lg">
         <flux:heading size="lg">Remove {{ count($this->selected) }} Visitor{{ count($this->selected) > 1 ? 's' : '' }} from Watchlist</flux:heading>
         <flux:text class="mt-2">
             Are you sure you want to remove {{ count($this->selected) }} selected visitor{{ count($this->selected) > 1 ? 's' : '' }} from the watchlist?

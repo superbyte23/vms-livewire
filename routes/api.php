@@ -11,8 +11,8 @@ Route::prefix('kiosk')->middleware('kiosk')->group(function () {
     Route::post('visitors', [KioskController::class, 'storeVisitor'])->name('api.kiosk.visitors.store');
     Route::get('visitors/token/{token}', [KioskController::class, 'showVisitorByToken'])->name('api.kiosk.visitors.showByToken');
 
-    Route::get('pre-registrations/pending', [KioskController::class, 'pendingPreRegistrations'])->name('api.kiosk.pre-registrations.pending');
-    Route::get('pre-registrations/token/{token}', [KioskController::class, 'showPreRegistrationByToken'])->name('api.kiosk.pre-registrations.showByToken');
+    Route::get('bookings/pending', [KioskController::class, 'pendingBookings'])->name('api.kiosk.bookings.pending');
+    Route::get('bookings/token/{token}', [KioskController::class, 'showBookingByToken'])->name('api.kiosk.bookings.showByToken');
 
     Route::get('on-site', [KioskController::class, 'onSite'])->name('api.kiosk.on-site');
 

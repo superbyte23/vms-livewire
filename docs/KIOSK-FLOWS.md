@@ -24,7 +24,7 @@ Internal notes on how the Visitor Management System (VMS) kiosk and its surround
 
 ## 3. Check-in flow (3-step wizard)
 
-1. **Identity** — search existing visitor (`Visitor::search` by name/email/phone/ID) or select a pending pre-registration match, or "Register as new visitor".
+1. **Identity** — search existing visitor (`Visitor::search` by name/email/phone/ID) or select a booked-visit match, or "Register as new visitor". Visitors with a pending booking are hidden from the plain results so each person shows once.
    - Search result rows are fully clickable (no redundant "Select" button).
    - New-person form: Name (required), Email, Phone, Company, Valid ID Number, ID-photo capture (WebRTC), ID scan (Tesseract OCR → autofills name/email/phone/company).
    - **Validation:** `name` required; email/phone/validIdNumber optional. `company` was removed from rules (input is not `required`).
@@ -36,8 +36,8 @@ Internal notes on how the Visitor Management System (VMS) kiosk and its surround
 
 - Loads existing visitor **or creates one** (persists `visitors` row — one-time person registration).
 - **Assigns a permanent QR token** if the visitor doesn't have one yet (`visitors.qr_code_token`, 32 chars).
-- Creates a `visitor_logs` row: status `checked_in`, `checked_in_at`, badge number (`V-YYYYMMDD-NNN`), host, purpose, visit selfie.
-- Notifies host (`VisitorCheckedIn`); if watchlist match → marks visitor flagged + notifies all users (`VisitorFlagged`); consumes pre-registration (`status → used`).
+- Creates a `visits` row: status `checked_in`, `checked_in_at`, badge number (`V-YYYYMMDD-NNN`), host, purpose, visit selfie.
+- Notifies host (`VisitorCheckedIn`); if watchlist match → marks visitor flagged + notifies all users (`VisitorFlagged`); a selected booking row (`status = scheduled`) is flipped to `checked_in` in place — no duplicate log.
 - Shows badge view with the **visitor's** QR.
 
 ## 5. Check-out flows
@@ -48,40 +48,44 @@ Search by name/host → **Check Out** → `confirmCheckOut()` → modal → `exe
 ### QR
 - Badge QR encodes `home?checkout=<visitor_token>`.
 - Two entry points: **Scan QR** button (html5-qrcode) or visiting `/` with `?checkout=<token>` (handled in `mount()`).
-- Token resolves the **visitor** (`visitors.qr_code_token`) → finds their **active visit** (`visitor_logs` where `status = checked_in`, latest) → confirmation modal → checks out that visit.
+- Token resolves the **visitor** (`visitors.qr_code_token`) → finds their **active visit** (`visits` where `status = checked_in`, latest) → confirmation modal → checks out that visit.
 - If no active visit: error toast *"Invalid QR code or visitor is not on-site."* Nothing is checked out.
 
 ## 6. Permanent QR (important)
 
 - QR is **per-visitor, not per-visit**. One token per visitor, reused across all future visits.
-- `visitor_logs.qr_code_token` is no longer used (column kept for legacy data; factory no longer generates it).
+- `visits.qr_code_token` is no longer used (column kept for legacy data; factory no longer generates it).
 - The same QR always targets whatever visit is currently active; after check-out it errors until the visitor checks in again.
 
-## 7. Pre-registration flow
+## 7. Booking flow (single table)
 
+- Only two tables own data: `visitors` (identity — the single source of truth) and `visits` (every visit: history + future bookings). The old `pre_registrations` / `scheduled_visits` tables were merged into `visits` (migration `2026_09_15_000000`) and dropped.
 - Visitor books ahead at `/pre-register` (public, kiosk layout): Name (required), Email, Phone, Company, Purpose, Expected date. **No host field** (host is captured on-site at the kiosk instead — removed by design).
-- Creates `pre_registrations` with `status = pending`. No host notification (no host known).
-- At the kiosk, searching shows **pending** matches in a green "Pre-registered visit" section; selecting prefills name/email/phone/company/purpose (host fields now prefill empty).
-- On check-in the pre-registration is marked `used` (single use).
-- Admin: `pages::pre-registrations` (search, status filter, create/edit/cancel/delete). Host columns still exist for legacy data.
+- The same booking can be made through the guided wizard at `/schedule-visit` (public, kiosk layout): Date → Visit type/Event → Record search (select your existing visitor record, or skip to the new-visitor form with optional ID photo) → Confirm → Verify with a "Scheduled Visit Pass" QR. A known email reuses the existing visitor instead of duplicating it.
+- Creates a `Visitor` plus a `visits` row with `status = scheduled` and its own booking QR. No host notification (no host known).
+- Staff book from the Visitors page (Schedule visit) or manage bookings in the Visitor Log (scheduled/cancelled filter, cancel action). Booking notifies the host (`VisitBooked`).
+- One active booking per visitor: creating another while one is `scheduled` is blocked with a warning (staff modal, public wizard, and pre-register all enforce this; cancelled/past visits don't block).
+- At the kiosk, searching shows **scheduled** matches in a green "Booked visit" section; selecting links the visitor and prefills host/purpose/type.
+- On check-in the booking row flips to `checked_in` in place (badge, times, selfie filled) — single use, no duplicate log.
+- Booking QR encodes `home?booking=<token>`; visitor badge QR encodes `home?checkout=<token>`.
 
 ## 8. Data model (key columns)
 
 | Table | Column | Notes |
 |---|---|---|
 | `visitors` | `qr_code_token` | nullable unique, permanent per visitor (added 2026-08-15; earlier column was dropped by `remove_remaining_visit_columns` migration — don't re-drop) |
-| `visitors` | `photo`, `company`, `valid_id_number`, `is_flagged`, `notes` | person-level data |
-| `visitor_logs` | `badge_number`, `host`, `host_user_id`, `purpose`, `photo`, `status`, `checked_in_at`, `checked_out_at` | per-visit; `qr_code_token` legacy/unused |
-| `pre_registrations` | `name`, `email`, `phone`, `company`, `host`, `host_user_id`, `purpose`, `expected_date`, `status` | status: `pending` / `used` / `cancelled` |
+| `visitors` | `firstname`, `middlename`, `lastname`, `email`, `phone`, `company`, `address`, `photo` (actual profile photo), `government_id` (number), `government_id_photo` (government-issued ID capture) | identity — the single source of truth; `name` is auto-composed (`First [Middle] Last`) for display/search, legacy full names are split on read paths |
+| `visits` | `badge_number`, `host`, `host_user_id`, `purpose`, `visit_type`, `expected_date`, `photo`, `status`, `checked_in_at`, `checked_out_at` | per-visit; `qr_code_token` holds the booking pass for `scheduled` rows |
+| `visits` | `status` | `scheduled` (booked ahead) / `checked_in` / `checked_out` / `cancelled` |
 
 ## 9. Migrations gotchas
 
-- A fresh migration run is required for `visitors.qr_code_token` (in-memory test DB migrates from scratch).
-- Existing `2026_07_07_012922_add_qr_code_token_to_visitors_table.php` is effectively dead (table was recreated without the column later).
+- Migrations are squashed to one file per table (`users`, `visitors`, `visits`, plus framework tables). No history for the retired `pre_registrations` / `scheduled_visits` tables is kept — square-one policy.
+- In-memory test DB migrates from scratch on every run.
 
 ## 10. Notifications
 
-- `VisitorPreRegistered` — legacy, no longer sent from the public form (admin create still sends it).
+- `VisitBooked` — to host when staff book a visit from the Visitors page.
 - `VisitorCheckedIn` — to host on check-in (if host set).
 - `VisitorCheckedOut` — to host on check-out (if host set).
 - `VisitorFlagged` — to all users when a watchlist match checks in.

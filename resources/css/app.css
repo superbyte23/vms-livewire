@@ -100,3 +100,24 @@ select:focus[data-flux-control] {
 /* \[:where(&)\]:size-4 {
     @apply size-4;
 } */
+
+/* Toasts: tinted background per variant + larger status icons. */
+[data-flux-toast-dialog][data-variant='success'] > div {
+    @apply border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-950;
+}
+
+[data-flux-toast-dialog][data-variant='warning'] > div {
+    @apply border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950;
+}
+
+[data-flux-toast-dialog][data-variant='danger'] > div {
+    @apply border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-950;
+}
+
+[data-flux-toast-dialog][data-variant='info'] > div {
+    @apply border-cyan-300 bg-cyan-50 dark:border-cyan-700 dark:bg-cyan-950;
+}
+
+[data-flux-toast-dialog] svg.size-4 {
+    @apply mt-0 size-8;
+}

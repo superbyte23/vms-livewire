@@ -20,12 +20,8 @@
                         {{ __('Visitors') }}
                     </flux:sidebar.item>
 
-                    <flux:sidebar.item icon="calendar-days" :href="route('pre-registrations')" :current="request()->routeIs('pre-registrations')" wire:navigate>
-                        {{ __('Pre-Registrations') }}
-                    </flux:sidebar.item>
-
-                    <flux:sidebar.item icon="document-text" :href="route('visitor-logs')" :current="request()->routeIs('visitor-logs')" wire:navigate>
-                        {{ __('Visitor Log') }}
+                    <flux:sidebar.item icon="document-text" :href="route('visits')" :current="request()->routeIs('visits')" wire:navigate>
+                        {{ __('Visits') }}
                     </flux:sidebar.item>
 
                     <flux:sidebar.item icon="users" :href="route('users')" :current="request()->routeIs('users')" wire:navigate>
@@ -101,7 +97,7 @@
         {{ $slot }}
 
         @persist('toast')
-            <flux:toast.group>
+            <flux:toast.group position="top center">
                 <flux:toast />
             </flux:toast.group>
         @endpersist

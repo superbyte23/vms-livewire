@@ -1,16 +1,17 @@
 <?php
 
-use App\Models\PreRegistration;
+use App\Models\Visit;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-new #[Title('Pre-Registration Complete')] #[Layout('layouts::kiosk')] class extends Component {
-    public PreRegistration $preRegistration;
+new #[Title('Pre-Registration Complete')] #[Layout('layouts::kiosk')] class extends Component
+{
+    public Visit $booking;
 
-    public function mount(PreRegistration $preRegistration): void
+    public function mount(Visit $booking): void
     {
-        $this->preRegistration = $preRegistration;
+        $this->booking = $booking->loadMissing('visitor');
     }
 }; ?>
 
@@ -20,17 +21,17 @@ new #[Title('Pre-Registration Complete')] #[Layout('layouts::kiosk')] class exte
         {{ __('Back to kiosk') }}
     </a>
 
-    @if ($this->preRegistration->status === 'pending')
+    @if ($this->booking->status === 'scheduled')
         <flux:callout variant="success" icon="check-circle" heading="{{ __('Pre-registration complete!') }}" class="mb-6">
             {{ __('Keep this pass handy. When you arrive, scan the QR code at the kiosk — or search your name — and your details will be pre-filled.') }}
         </flux:callout>
 
         <x-pages::components.pre-registration-card
-            :token="$this->preRegistration->qr_code_token"
-            :name="$this->preRegistration->name"
-            :company="$this->preRegistration->company"
-            :purpose="$this->preRegistration->purpose"
-            :date="$this->preRegistration->expected_date?->format('M j, Y')"
+            :token="$this->booking->qr_code_token"
+            :name="$this->booking->visitor?->name ?? 'Visitor'"
+            :company="$this->booking->visitor?->company"
+            :purpose="$this->booking->purpose"
+            :date="$this->booking->expected_date?->format('M j, Y')"
         />
 
         <div class="mt-8 text-center">

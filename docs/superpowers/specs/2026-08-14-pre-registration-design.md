@@ -8,7 +8,7 @@ Add visitor pre-registration to the VMS so visitors can book a visit ahead of ti
 
 ## Data model
 
-New `PreRegistration` model (UUID pk, `HasFactory`, `SoftDeletes`, matching `Visitor`/`VisitorLog` conventions):
+New `PreRegistration` model (UUID pk, `HasFactory`, `SoftDeletes`, matching `Visitor`/`Visit` conventions):
 
 | Column | Type |
 |---|---|
@@ -52,7 +52,7 @@ Step 1 search:
 - Selecting a pre-registration sets `selectedPreRegistrationId`, prefills `name`, `email`, `phone`, `company`, `host`, `hostUserId`, `purpose`, and clears `selectedVisitorId` (person is created at check-in).
 
 Check-in:
-- When `selectedPreRegistrationId` is set, reuse the existing create-visitor path (no `Visitor` person exists yet) and after the `VisitorLog` is created, mark the pre-registration `used`.
+- When `selectedPreRegistrationId` is set, reuse the existing create-visitor path (no `Visitor` person exists yet) and after the `Visit` is created, mark the pre-registration `used`.
 - Existing notifications (`VisitorCheckedIn`, `VisitorFlagged`) are unchanged.
 - If a flagged person is checked in via a pre-registration, the person record is flagged as today.
 
@@ -78,7 +78,7 @@ New `VisitorPreRegistered` notification (mail + database channels) to the host u
 
 - Public submission: creates pending record, notifies host, validation errors
 - Kiosk search returns matching pending pre-registrations
-- Kiosk check-in with selected pre-registration: creates Visitor person, creates VisitorLog, marks pre-registration `used`
+- Kiosk check-in with selected pre-registration: creates Visitor person, creates Visit, marks pre-registration `used`
 - Admin: list, search, status filter, create, edit, cancel, delete
 - Auth: admin page requires login; public page is open
 

@@ -1,8 +1,13 @@
 <?php
 
+use App\Models\User;
 use App\Models\Visitor;
+use App\Models\Visit;
+use App\Notifications\VisitBooked;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -10,38 +15,87 @@ use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
-new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
+new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component
+{
     use WithFileUploads, WithPagination;
 
     public string $search = '';
+
     public array $selected = [];
+
     public bool $selectAll = false;
 
     public bool $showCreateModal = false;
+
     public bool $showEditModal = false;
+
     public bool $showViewModal = false;
+
     public bool $showDeleteModal = false;
+
     public bool $showBulkDeleteModal = false;
+
     public bool $showClearAllModal = false;
+
+    public bool $showScheduleModal = false;
+
     public string $clearAllConfirm = '';
 
     public ?string $editingVisitorId = null;
+
     public ?string $viewingVisitorId = null;
+
     public ?string $deletingVisitorId = null;
 
-    public string $createName = '';
-    public string $createEmail = '';
-    public string $createPhone = '';
-    public string $createCompany = '';
-    public string $createValidIdNumber = '';
+    public ?string $schedulingVisitorId = null;
 
-    public string $editName = '';
+    public string $schedulePurpose = '';
+
+    public string $scheduleVisitType = '';
+
+    public string $scheduleExpectedDate = '';
+
+    public ?string $scheduleHostUserId = null;
+
+    public string $scheduleHost = '';
+
+    public string $createFirstname = '';
+
+    public string $createMiddlename = '';
+
+    public string $createLastname = '';
+
+    public string $createEmail = '';
+
+    public string $createPhone = '';
+
+    public string $createCompany = '';
+
+    public string $createAddress = '';
+
+    public string $createGovernmentId = '';
+
+    public string $editFirstname = '';
+
+    public string $editMiddlename = '';
+
+    public string $editLastname = '';
+
     public string $editEmail = '';
+
     public string $editPhone = '';
+
     public string $editCompany = '';
-    public string $editValidIdNumber = '';
+
+    public string $editAddress = '';
+
+    public string $editGovernmentId = '';
+
     public string $editNotes = '';
+
     public string $editPhotoDataUri = '';
+
+    public string $editGovIdPhotoDataUri = '';
 
     public function updatedSearch(): void
     {
@@ -58,29 +112,36 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
 
     public function openCreateModal(): void
     {
-        $this->reset('createName', 'createEmail', 'createPhone', 'createCompany', 'createValidIdNumber');
+        $this->reset('createFirstname', 'createMiddlename', 'createLastname', 'createEmail', 'createPhone', 'createCompany', 'createAddress', 'createGovernmentId');
         $this->showCreateModal = true;
     }
 
     public function createVisitor(): void
     {
         $this->validate([
-            'createName' => 'required|string|max:255',
+            'createFirstname' => 'required|string|max:255',
+            'createMiddlename' => 'nullable|string|max:255',
+            'createLastname' => 'required|string|max:255',
             'createEmail' => 'nullable|email|max:255',
             'createPhone' => 'nullable|string|max:50',
             'createCompany' => 'nullable|string|max:255',
-            'createValidIdNumber' => 'nullable|string|max:255',
+            'createAddress' => 'nullable|string|max:255',
+            'createGovernmentId' => 'nullable|string|max:255',
         ]);
 
         Visitor::create([
-            'name' => $this->createName,
+            'firstname' => $this->createFirstname,
+            'middlename' => $this->createMiddlename ?: null,
+            'lastname' => $this->createLastname,
+            'name' => Visitor::composeName($this->createFirstname, $this->createMiddlename ?: null, $this->createLastname),
             'email' => $this->createEmail,
             'phone' => $this->createPhone,
             'company' => $this->createCompany,
-            'valid_id_number' => $this->createValidIdNumber,
+            'address' => $this->createAddress ?: null,
+            'government_id' => $this->createGovernmentId ?: null,
         ]);
 
-        $this->reset('createName', 'createEmail', 'createPhone', 'createCompany', 'createValidIdNumber', 'showCreateModal');
+        $this->reset('createFirstname', 'createMiddlename', 'createLastname', 'createEmail', 'createPhone', 'createCompany', 'createAddress', 'createGovernmentId', 'showCreateModal');
 
         Flux::toast(variant: 'success', text: 'Visitor created successfully.');
     }
@@ -89,32 +150,43 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
     {
         $visitor = Visitor::findOrFail($id);
         $this->editingVisitorId = $id;
-        $this->editName = $visitor->name;
+        $this->editFirstname = $visitor->firstname ?? '';
+        $this->editMiddlename = $visitor->middlename ?? '';
+        $this->editLastname = $visitor->lastname ?? '';
         $this->editEmail = $visitor->email ?? '';
         $this->editPhone = $visitor->phone ?? '';
         $this->editCompany = $visitor->company ?? '';
-        $this->editValidIdNumber = $visitor->valid_id_number ?? '';
+        $this->editAddress = $visitor->address ?? '';
+        $this->editGovernmentId = $visitor->government_id ?? '';
         $this->editNotes = $visitor->notes ?? '';
         $this->editPhotoDataUri = '';
+        $this->editGovIdPhotoDataUri = '';
         $this->showEditModal = true;
     }
 
     public function updateVisitor(): void
     {
         $this->validate([
-            'editName' => 'required|string|max:255',
+            'editFirstname' => 'required|string|max:255',
+            'editMiddlename' => 'nullable|string|max:255',
+            'editLastname' => 'required|string|max:255',
             'editEmail' => 'nullable|email|max:255',
             'editPhone' => 'nullable|string|max:50',
             'editCompany' => 'nullable|string|max:255',
-            'editValidIdNumber' => 'nullable|string|max:255',
+            'editAddress' => 'nullable|string|max:255',
+            'editGovernmentId' => 'nullable|string|max:255',
         ]);
 
         $data = [
-            'name' => $this->editName,
+            'firstname' => $this->editFirstname,
+            'middlename' => $this->editMiddlename ?: null,
+            'lastname' => $this->editLastname,
+            'name' => Visitor::composeName($this->editFirstname, $this->editMiddlename ?: null, $this->editLastname),
             'email' => $this->editEmail ?: null,
             'phone' => $this->editPhone ?: null,
             'company' => $this->editCompany ?: null,
-            'valid_id_number' => $this->editValidIdNumber ?: null,
+            'address' => $this->editAddress ?: null,
+            'government_id' => $this->editGovernmentId ?: null,
             'notes' => $this->editNotes ?: null,
         ];
 
@@ -122,9 +194,13 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
             $data['photo'] = $this->editPhotoDataUri;
         }
 
+        if ($this->editGovIdPhotoDataUri) {
+            $data['government_id_photo'] = $this->editGovIdPhotoDataUri;
+        }
+
         Visitor::findOrFail($this->editingVisitorId)->update($data);
 
-        $this->reset('editingVisitorId', 'editName', 'editEmail', 'editPhone', 'editCompany', 'editValidIdNumber', 'editNotes', 'editPhotoDataUri', 'showEditModal');
+        $this->reset('editingVisitorId', 'editFirstname', 'editMiddlename', 'editLastname', 'editEmail', 'editPhone', 'editCompany', 'editAddress', 'editGovernmentId', 'editNotes', 'editPhotoDataUri', 'editGovIdPhotoDataUri', 'showEditModal');
 
         Flux::toast(variant: 'success', text: 'Visitor updated successfully.');
     }
@@ -133,6 +209,81 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
     {
         $this->viewingVisitorId = $id;
         $this->showViewModal = true;
+    }
+
+    #[Computed]
+    public function hostUsers(): Collection
+    {
+        return User::orderBy('name')->get();
+    }
+
+    #[Computed]
+    public function schedulingVisitor(): ?Visitor
+    {
+        return $this->schedulingVisitorId ? Visitor::find($this->schedulingVisitorId) : null;
+    }
+
+    #[Computed]
+    public function schedulingVisitorBooking(): ?Visit
+    {
+        if ($this->schedulingVisitorId === null) {
+            return null;
+        }
+
+        return Visit::activeBookingFor($this->schedulingVisitorId);
+    }
+
+    public function openScheduleModal(string $id): void
+    {
+        $this->schedulingVisitorId = $id;
+        $this->reset('schedulePurpose', 'scheduleVisitType', 'scheduleExpectedDate', 'scheduleHostUserId', 'scheduleHost');
+        $this->showScheduleModal = true;
+    }
+
+    public function scheduleVisit(): void
+    {
+        $visitor = Visitor::findOrFail($this->schedulingVisitorId);
+
+        if ($existing = Visit::activeBookingFor($visitor->id)) {
+            $this->addError(
+                'scheduleExpectedDate',
+                __('This visitor already has a scheduled visit on :date.', ['date' => $existing->expected_date?->format('M j, Y') ?? 'file'])
+            );
+            Flux::toast(variant: 'warning', text: __('Booking blocked: visitor already has a scheduled visit.'));
+
+            return;
+        }
+
+        $this->validate([
+            'scheduleExpectedDate' => 'required|date|after_or_equal:today',
+            'scheduleVisitType' => 'required|string|max:255',
+            'schedulePurpose' => 'nullable|string|max:255',
+            'scheduleHost' => 'nullable|string|max:255',
+        ]);
+
+        $booking = Visit::create([
+            'visitor_id' => $visitor->id,
+            'host' => $this->scheduleHost ?: null,
+            'host_user_id' => $this->scheduleHostUserId,
+            'purpose' => $this->schedulePurpose ?: null,
+            'visit_type' => $this->scheduleVisitType ?: null,
+            'expected_date' => $this->scheduleExpectedDate ?: null,
+            'status' => 'scheduled',
+            'qr_code_token' => Str::random(32),
+        ]);
+
+        if ($booking->host_user_id && $hostUser = User::find($booking->host_user_id)) {
+            $hostUser->notify(new VisitBooked($booking));
+        }
+
+        $this->reset('schedulingVisitorId', 'schedulePurpose', 'scheduleVisitType', 'scheduleExpectedDate', 'scheduleHostUserId', 'scheduleHost', 'showScheduleModal');
+
+        Flux::toast(variant: 'success', text: 'Visit scheduled. No duplicate visitor record created.');
+    }
+
+    public function cancelSchedule(): void
+    {
+        $this->reset('schedulingVisitorId', 'schedulePurpose', 'scheduleVisitType', 'scheduleExpectedDate', 'scheduleHostUserId', 'scheduleHost', 'showScheduleModal');
     }
 
     public function confirmDelete(string $id): void
@@ -210,7 +361,7 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
     public function toggleFlag(string $id): void
     {
         $visitor = Visitor::findOrFail($id);
-        $visitor->update(['is_flagged' => !$visitor->is_flagged]);
+        $visitor->update(['is_flagged' => ! $visitor->is_flagged]);
 
         Flux::toast(
             variant: 'success',
@@ -290,7 +441,7 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
                     <flux:table.column>Name</flux:table.column>
                     <flux:table.column class="hidden sm:table-cell">Email</flux:table.column>
                     <flux:table.column class="hidden md:table-cell">Phone</flux:table.column>
-                    <flux:table.column class="hidden lg:table-cell">ID Number</flux:table.column>
+                    <flux:table.column class="hidden lg:table-cell">Government ID</flux:table.column>
                     <flux:table.column class="hidden md:table-cell">QR</flux:table.column>
                     <flux:table.column class="hidden xl:table-cell">Visits</flux:table.column>
                     <flux:table.column>Flagged</flux:table.column>
@@ -323,7 +474,7 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
                             </flux:table.cell>
                             <flux:table.cell class="hidden sm:table-cell">{{ $visitor->email ?: '—' }}</flux:table.cell>
                             <flux:table.cell class="hidden md:table-cell">{{ $visitor->phone ?: '—' }}</flux:table.cell>
-                            <flux:table.cell class="hidden lg:table-cell">{{ $visitor->valid_id_number ?: '—' }}</flux:table.cell>
+                            <flux:table.cell class="hidden lg:table-cell">{{ $visitor->government_id ?: '—' }}</flux:table.cell>
                             <flux:table.cell class="hidden md:table-cell">
                                 @if ($visitor->qr_code_token)
                                     <img src="{{ route('qr.code', $visitor->qr_code_token) }}" alt="QR Code" class="h-10 w-10 rounded border border-neutral-200 object-cover dark:border-neutral-700">
@@ -332,7 +483,7 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
                                 @endif
                             </flux:table.cell>
                             <flux:table.cell class="hidden xl:table-cell">
-                                <span class="text-neutral-500 dark:text-neutral-400">{{ $visitor->logs()->count() }}</span>
+                                <span class="text-neutral-500 dark:text-neutral-400">{{ $visitor->visits()->count() }}</span>
                             </flux:table.cell>
                             <flux:table.cell>
                                 @if ($visitor->is_flagged)
@@ -354,6 +505,9 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
                                         </flux:menu.item>
                                         <flux:menu.item icon="pencil" wire:click="openEditModal('{{ $visitor->id }}')">
                                             Edit
+                                        </flux:menu.item>
+                                        <flux:menu.item icon="calendar-days" wire:click="openScheduleModal('{{ $visitor->id }}')">
+                                            Schedule visit
                                         </flux:menu.item>
                                         <flux:menu.separator />
                                         <flux:menu.item
@@ -377,16 +531,25 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
         @endif
 
     {{-- Create Visitor Modal --}}
-    <flux:modal wire:model="showCreateModal" name="create-visitor" class="min-w-sm">
+    <flux:modal wire:model="showCreateModal" name="create-visitor" class="max-w-2xl">
         <flux:heading size="lg">Add Visitor</flux:heading>
         <flux:text class="mt-2">Register a new visitor in the system.</flux:text>
 
         <div class="mt-6 space-y-4">
-            <flux:input wire:model="createName" label="Full Name" type="text" required placeholder="e.g. John Doe" />
-            <flux:input wire:model="createEmail" label="Email" type="email" placeholder="e.g. john@example.com" />
-            <flux:input wire:model="createPhone" label="Phone" type="text" placeholder="e.g. +1 555-0123" />
-            <flux:input wire:model="createCompany" label="Company" type="text" placeholder="e.g. Acme Corp" />
-            <flux:input wire:model="createValidIdNumber" label="Valid ID Number" type="text" placeholder="e.g. DL-12345678" />
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <flux:input wire:model="createFirstname" label="First Name" type="text" required placeholder="e.g. John" />
+                <flux:input wire:model="createMiddlename" label="Middle Name" type="text" placeholder="e.g. Michael" />
+                <flux:input wire:model="createLastname" label="Last Name" type="text" required placeholder="e.g. Doe" />
+            </div>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <flux:input wire:model="createEmail" label="Email" type="email" placeholder="e.g. john@example.com" />
+                <flux:input wire:model="createPhone" label="Phone / Mobile" type="text" placeholder="e.g. +1 555-0123" />
+            </div>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <flux:input wire:model="createCompany" label="Company" type="text" placeholder="e.g. Acme Corp" />
+                <flux:input wire:model="createAddress" label="Address" type="text" placeholder="e.g. 123 Main St" />
+            </div>
+            <flux:input wire:model="createGovernmentId" label="Government ID" type="text" placeholder="e.g. DL-12345678" />
 
             <div class="flex gap-2 pt-2">
                 <flux:button variant="primary" class="flex-1 !py-3" wire:click="createVisitor">
@@ -399,8 +562,49 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
         </div>
     </flux:modal>
 
+    {{-- Schedule Visit Modal: date → type → confirm --}}
+    <flux:modal wire:model="showScheduleModal" name="schedule-visit" class="max-w-2xl">
+        <flux:heading size="lg">Schedule Visit</flux:heading>
+        <flux:text class="mt-2">Date → visit type → confirm for {{ $this->schedulingVisitor?->name ?? 'this visitor' }}. No duplicate record is created.</flux:text>
+
+        @if ($this->schedulingVisitorBooking)
+            <flux:callout variant="warning" icon="exclamation-circle" heading="{{ __('Already scheduled') }}" class="mt-4">
+                {{ __('This visitor already has a scheduled visit on :date. Cancel it in the Visitor Log before booking again.', ['date' => $this->schedulingVisitorBooking->expected_date?->format('M j, Y') ?? '—']) }}
+            </flux:callout>
+        @endif
+
+        <div class="mt-6 space-y-4">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <x-date-picker wire:model="scheduleExpectedDate" label="Schedule date (required)" />
+            <flux:select wire:model="scheduleVisitType" label="Visit Type or Purpose of Visit (required)">
+                <option value="">— Select type —</option>
+                @foreach (\App\Models\Visit::VISIT_TYPES as $type)
+                    <option value="{{ $type }}">{{ $type }}</option>
+                @endforeach
+            </flux:select>
+            </div>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                    <flux:select wire:model="scheduleHostUserId" label="Host">
+                        <option value="">— No host —</option>
+                        @foreach ($this->hostUsers as $user)
+                            <option value="{{ $user->id }}">{{ $user->name }}</option>
+                        @endforeach
+                    </flux:select>
+                </div>
+                <flux:input wire:model="scheduleHost" label="Host name (custom)" placeholder="e.g. Sarah Johnson" />
+            </div>
+            <flux:textarea wire:model="schedulePurpose" label="Details" placeholder="e.g. Q3 review meeting" rows="3" />
+
+            <div class="flex gap-2 pt-2">
+                <flux:button variant="primary" class="flex-1 !py-3" wire:click="scheduleVisit">Confirm Schedule</flux:button>
+                <flux:button variant="ghost" wire:click="cancelSchedule">Cancel</flux:button>
+            </div>
+        </div>
+    </flux:modal>
+
     {{-- Edit Visitor Modal --}}
-    <flux:modal wire:model="showEditModal" name="edit-visitor" class="min-w-sm">
+    <flux:modal wire:model="showEditModal" name="edit-visitor" class="max-w-2xl">
         <flux:heading size="lg">Edit Visitor</flux:heading>
         <flux:text class="mt-2">Update visitor identity details.</flux:text>
 
@@ -496,11 +700,110 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
                 </div>
             </div>
 
-            <flux:input wire:model="editName" label="Full Name" type="text" required placeholder="e.g. John Doe" />
-            <flux:input wire:model="editEmail" label="Email" type="email" placeholder="e.g. john@example.com" />
-            <flux:input wire:model="editPhone" label="Phone" type="text" placeholder="e.g. +1 555-0123" />
-            <flux:input wire:model="editCompany" label="Company" type="text" placeholder="e.g. Acme Corp" />
-            <flux:input wire:model="editValidIdNumber" label="Valid ID Number" type="text" placeholder="e.g. DL-12345678" />
+            {{-- Government-issued ID capture --}}
+            <div x-data="{
+                mode: 'idle',
+                idPhoto: @entangle('editGovIdPhotoDataUri'),
+                stream: null,
+                videoReady: false,
+                async startCamera() {
+                    try {
+                        this.mode = 'camera';
+                        this.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'environment' } });
+                        await this.$nextTick();
+                        const video = this.$refs.govVideo;
+                        video.srcObject = this.stream;
+                        video.onloadedmetadata = () => { video.play(); this.videoReady = true; };
+                    } catch (e) { alert('Camera error: ' + e.message); this.mode = 'idle'; }
+                },
+                capture() {
+                    const video = this.$refs.govVideo;
+                    const canvas = this.$refs.govCanvas;
+                    canvas.width = video.videoWidth || 640;
+                    canvas.height = video.videoHeight || 480;
+                    canvas.getContext('2d').drawImage(video, 0, 0);
+                    this.idPhoto = canvas.toDataURL('image/jpeg', 0.8);
+                    this.stopCamera();
+                    this.mode = 'idle';
+                },
+                stopCamera() {
+                    if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
+                    this.videoReady = false;
+                },
+                handleUpload(e) {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => { this.idPhoto = ev.target.result; };
+                    reader.readAsDataURL(file);
+                    this.mode = 'idle';
+                },
+                clearIdPhoto() {
+                    this.idPhoto = '';
+                },
+                destroy() { this.stopCamera(); }
+            }">
+                <flux:text variant="label" class="mb-2 block">Government-issued ID</flux:text>
+
+                {{-- Camera --}}
+                <template x-if="mode === 'camera'">
+                    <div class="space-y-2">
+                        <video x-ref="govVideo" autoplay playsinline class="mx-auto max-h-48 rounded-lg"></video>
+                        <div class="flex gap-2 justify-center">
+                            <flux:button variant="primary" x-on:click="capture()" x-bind:disabled="!videoReady">Capture</flux:button>
+                            <flux:button variant="ghost" x-on:click="stopCamera(); mode = 'idle'">Cancel</flux:button>
+                        </div>
+                        <canvas x-ref="govCanvas" class="hidden"></canvas>
+                    </div>
+                </template>
+
+                {{-- Upload --}}
+                <template x-if="mode === 'upload'">
+                    <div class="space-y-2">
+                        <input type="file" accept="image/*" x-on:change="handleUpload($event)" class="block w-full text-sm text-neutral-600 file:mr-3 file:rounded-lg file:border-0 file:bg-neutral-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-neutral-700 hover:file:bg-neutral-200 dark:text-neutral-400 dark:file:bg-neutral-800 dark:file:text-neutral-300 dark:hover:file:bg-neutral-700">
+                        <flux:button variant="ghost" size="sm" x-on:click="mode = 'idle'">Cancel</flux:button>
+                    </div>
+                </template>
+
+                {{-- Buttons --}}
+                <div x-show="!idPhoto" class="flex gap-2">
+                    <flux:button variant="outline" class="flex-1" x-on:click="startCamera()" icon="camera">Camera</flux:button>
+                    <flux:button variant="outline" class="flex-1" x-on:click="mode = 'upload'" icon="arrow-up-tray">Upload</flux:button>
+                </div>
+
+                {{-- Current ID (no new capture) --}}
+                <div x-show="!idPhoto" class="flex justify-center mt-2">
+                    @if ($currVisitor?->government_id_photo)
+                        <div class="relative">
+                            <img src="{{ $currVisitor->government_id_photo }}" alt="" class="h-20 w-20 rounded-lg object-cover border border-neutral-200 dark:border-neutral-700">
+                            <span class="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-neutral-800/70 px-2 py-0.5 text-[10px] text-white">Current</span>
+                        </div>
+                    @endif
+                </div>
+
+                {{-- New ID preview --}}
+                <div x-show="idPhoto" class="flex justify-center mt-2">
+                    <div class="relative">
+                        <img :src="idPhoto" alt="" class="h-20 w-20 rounded-lg object-cover border-2 border-emerald-400 shadow-sm">
+                        <button type="button" x-on:click="clearIdPhoto()" class="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs hover:bg-red-600 transition-shadow hover:shadow-md">✕</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <flux:input wire:model="editFirstname" label="First Name" type="text" required placeholder="e.g. John" />
+                <flux:input wire:model="editMiddlename" label="Middle Name" type="text" placeholder="e.g. Michael" />
+                <flux:input wire:model="editLastname" label="Last Name" type="text" required placeholder="e.g. Doe" />
+            </div>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <flux:input wire:model="editEmail" label="Email" type="email" placeholder="e.g. john@example.com" />
+                <flux:input wire:model="editPhone" label="Phone / Mobile" type="text" placeholder="e.g. +1 555-0123" />
+            </div>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <flux:input wire:model="editCompany" label="Company" type="text" placeholder="e.g. Acme Corp" />
+                <flux:input wire:model="editAddress" label="Address" type="text" placeholder="e.g. 123 Main St" />
+            </div>
+            <flux:input wire:model="editGovernmentId" label="Government ID" type="text" placeholder="e.g. DL-12345678" />
             <flux:textarea wire:model="editNotes" label="Notes" placeholder="Internal notes..." rows="3" />
 
             <div class="flex gap-2 pt-2">
@@ -515,21 +818,40 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
     </flux:modal>
 
     {{-- View Visitor Modal --}}
-    <flux:modal wire:model="showViewModal" name="view-visitor" class="min-w-sm">
+    <flux:modal wire:model="showViewModal" name="view-visitor" class="max-w-2xl">
         @if ($this->viewingVisitor)
             <flux:heading size="lg">Visitor Details</flux:heading>
 
             <div class="mt-6 space-y-4">
-                @if ($this->viewingVisitor->photo)
-                    <div class="flex justify-center">
-                        <img src="{{ $this->viewingVisitor->photo }}" alt="Visitor photo" class="h-24 w-24 rounded-full object-cover border border-neutral-200 dark:border-neutral-700">
+                @if ($this->viewingVisitor->photo || $this->viewingVisitor->government_id_photo)
+                    <div class="flex justify-center gap-4">
+                        @if ($this->viewingVisitor->photo)
+                            <div class="text-center">
+                                <img src="{{ $this->viewingVisitor->photo }}" alt="Visitor photo" class="h-24 w-24 rounded-full object-cover border border-neutral-200 dark:border-neutral-700">
+                                <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Profile photo</p>
+                            </div>
+                        @endif
+                        @if ($this->viewingVisitor->government_id_photo)
+                            <div class="text-center">
+                                <img src="{{ $this->viewingVisitor->government_id_photo }}" alt="Government-issued ID" class="h-24 w-24 rounded-lg object-cover border border-neutral-200 dark:border-neutral-700">
+                                <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Government ID</p>
+                            </div>
+                        @endif
                     </div>
                 @endif
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <flux:text variant="label">Name</flux:text>
-                        <flux:text>{{ $this->viewingVisitor->name }}</flux:text>
+                        <flux:text variant="label">First Name</flux:text>
+                        <flux:text>{{ $this->viewingVisitor->firstname ?: '—' }}</flux:text>
+                    </div>
+                    <div>
+                        <flux:text variant="label">Middle Name</flux:text>
+                        <flux:text>{{ $this->viewingVisitor->middlename ?: '—' }}</flux:text>
+                    </div>
+                    <div>
+                        <flux:text variant="label">Last Name</flux:text>
+                        <flux:text>{{ $this->viewingVisitor->lastname ?: '—' }}</flux:text>
                     </div>
                     <div>
                         <flux:text variant="label">Flagged</flux:text>
@@ -554,12 +876,16 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
                         <flux:text>{{ $this->viewingVisitor->company ?: '—' }}</flux:text>
                     </div>
                     <div>
-                        <flux:text variant="label">Valid ID Number</flux:text>
-                        <flux:text>{{ $this->viewingVisitor->valid_id_number ?: '—' }}</flux:text>
+                        <flux:text variant="label">Address</flux:text>
+                        <flux:text>{{ $this->viewingVisitor->address ?: '—' }}</flux:text>
+                    </div>
+                    <div>
+                        <flux:text variant="label">Government ID</flux:text>
+                        <flux:text>{{ $this->viewingVisitor->government_id ?: '—' }}</flux:text>
                     </div>
                     <div>
                         <flux:text variant="label">Total Visits</flux:text>
-                        <flux:text>{{ $this->viewingVisitor->logs()->count() }}</flux:text>
+                        <flux:text>{{ $this->viewingVisitor->visits()->count() }}</flux:text>
                     </div>
                     <div>
                         <flux:text variant="label">Registered</flux:text>
@@ -584,7 +910,7 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
     </flux:modal>
 
     {{-- Delete Visitor Confirmation Modal --}}
-    <flux:modal wire:model="showDeleteModal" name="delete-visitor" class="min-w-sm">
+    <flux:modal wire:model="showDeleteModal" name="delete-visitor" class="max-w-lg">
         @if ($this->deletingVisitor)
             <flux:heading size="lg">Delete Visitor</flux:heading>
             <flux:text class="mt-2">
@@ -592,12 +918,12 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
                 This will also delete all their visit history. This action cannot be undone.
             </flux:text>
 
-            @if ($this->deletingVisitor->logs()->count() > 0)
+            @if ($this->deletingVisitor->visits()->count() > 0)
                 <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
                     <div class="flex items-start gap-2">
                         <svg class="mt-0.5 h-4 w-4 shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
                         <p class="text-xs text-amber-700 dark:text-amber-400">
-                            This visitor has {{ $this->deletingVisitor->logs()->count() }} visit record(s) that will also be deleted.
+                            This visitor has {{ $this->deletingVisitor->visits()->count() }} visit record(s) that will also be deleted.
                         </p>
                     </div>
                 </div>
@@ -615,7 +941,7 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
     </flux:modal>
 
     {{-- Bulk Delete Confirmation Modal --}}
-    <flux:modal wire:model="showBulkDeleteModal" name="bulk-delete-visitors" class="min-w-sm">
+    <flux:modal wire:model="showBulkDeleteModal" name="bulk-delete-visitors" class="max-w-lg">
         <flux:heading size="lg">Delete {{ count($this->selected) }} Visitor{{ count($this->selected) > 1 ? 's' : '' }}</flux:heading>
         <flux:text class="mt-2">
             Are you sure you want to delete {{ count($this->selected) }} selected visitor{{ count($this->selected) > 1 ? 's' : '' }}?
@@ -633,7 +959,7 @@ new #[Title('Visitors')] #[Layout('layouts::app')] class extends Component {
     </flux:modal>
 
     {{-- Clear All Data Confirmation Modal --}}
-    <flux:modal wire:model="showClearAllModal" name="clear-all-visitors" class="min-w-sm">
+    <flux:modal wire:model="showClearAllModal" name="clear-all-visitors" class="max-w-lg">
         <flux:heading size="lg">Clear All Visitor Data</flux:heading>
         <flux:text class="mt-2">
             This will permanently delete <strong>every visitor</strong> and all their visit history.

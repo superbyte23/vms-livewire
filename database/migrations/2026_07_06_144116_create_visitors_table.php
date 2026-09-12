@@ -11,13 +11,19 @@ return new class extends Migration
         Schema::create('visitors', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->string('name');
+            $table->string('firstname')->nullable();
+            $table->string('middlename')->nullable();
+            $table->string('lastname')->nullable();
             $table->string('phone', 20)->nullable();
             $table->string('email')->nullable();
-            $table->string('host')->nullable();
-            $table->string('purpose')->nullable();
-            $table->enum('status', ['checked_in', 'checked_out'])->default('checked_in');
-            $table->timestamp('checked_in_at')->nullable();
-            $table->timestamp('checked_out_at')->nullable();
+            $table->longText('photo')->nullable();
+            $table->string('company')->nullable();
+            $table->string('address')->nullable();
+            $table->string('government_id')->nullable();
+            $table->longText('government_id_photo')->nullable();
+            $table->string('qr_code_token', 64)->nullable()->unique();
+            $table->boolean('is_flagged')->default(false);
+            $table->text('notes')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });

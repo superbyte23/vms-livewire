@@ -26,8 +26,8 @@ test('watchlist page shows empty state when no flagged visitors', function () {
 });
 
 test('search filters flagged visitors', function () {
-    Visitor::factory()->create(['name' => 'John Doe', 'is_flagged' => true]);
-    Visitor::factory()->create(['name' => 'Jane Smith', 'is_flagged' => true]);
+    Visitor::factory()->create(['firstname' => 'John', 'lastname' => 'Doe', 'is_flagged' => true]);
+    Visitor::factory()->create(['firstname' => 'Jane', 'lastname' => 'Smith', 'is_flagged' => true]);
 
     Livewire::test('pages::watchlist')
         ->set('search', 'John')

@@ -291,15 +291,19 @@ new #[Title('User Management')] #[Layout('layouts::app')] class extends Componen
         @endif
 
     {{-- Create User Modal --}}
-    <flux:modal wire:model="showCreateModal" name="create-user" class="min-w-sm">
+    <flux:modal wire:model="showCreateModal" name="create-user" class="max-w-2xl">
         <flux:heading size="lg">Add User</flux:heading>
         <flux:text class="mt-2">Create a new system user. They will receive login access immediately.</flux:text>
 
         <div class="mt-6 space-y-4">
-            <flux:input wire:model="createName" label="Full Name" type="text" required placeholder="e.g. Jane Smith" />
-            <flux:input wire:model="createEmail" label="Email" type="email" required placeholder="e.g. jane@example.com" />
-            <flux:input wire:model="createPassword" label="Password" type="password" required placeholder="Min. 8 characters" />
-            <flux:input wire:model="createPasswordConfirmation" label="Confirm Password" type="password" required placeholder="Repeat password" />
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <flux:input wire:model="createName" label="Full Name" type="text" required placeholder="e.g. Jane Smith" />
+                <flux:input wire:model="createEmail" label="Email" type="email" required placeholder="e.g. jane@example.com" />
+            </div>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <flux:input wire:model="createPassword" label="Password" type="password" required placeholder="Min. 8 characters" />
+                <flux:input wire:model="createPasswordConfirmation" label="Confirm Password" type="password" required placeholder="Repeat password" />
+            </div>
 
             <div class="flex gap-2 pt-2">
                 <flux:button variant="primary" class="flex-1 !py-3" wire:click="createUser">
@@ -313,13 +317,15 @@ new #[Title('User Management')] #[Layout('layouts::app')] class extends Componen
     </flux:modal>
 
     {{-- Edit User Modal --}}
-    <flux:modal wire:model="showEditModal" name="edit-user" class="min-w-sm">
+    <flux:modal wire:model="showEditModal" name="edit-user" class="max-w-2xl">
         <flux:heading size="lg">Edit User</flux:heading>
         <flux:text class="mt-2">Update user name and email address.</flux:text>
 
         <div class="mt-6 space-y-4">
-            <flux:input wire:model="editName" label="Full Name" type="text" required placeholder="e.g. Jane Smith" />
-            <flux:input wire:model="editEmail" label="Email" type="email" required placeholder="e.g. jane@example.com" />
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <flux:input wire:model="editName" label="Full Name" type="text" required placeholder="e.g. Jane Smith" />
+                <flux:input wire:model="editEmail" label="Email" type="email" required placeholder="e.g. jane@example.com" />
+            </div>
 
             <div class="flex gap-2 pt-2">
                 <flux:button variant="primary" class="flex-1 !py-3" wire:click="updateUser">
@@ -333,7 +339,7 @@ new #[Title('User Management')] #[Layout('layouts::app')] class extends Componen
     </flux:modal>
 
     {{-- Delete User Confirmation Modal --}}
-    <flux:modal wire:model="showDeleteModal" name="delete-user" class="min-w-sm">
+    <flux:modal wire:model="showDeleteModal" name="delete-user" class="max-w-lg">
         @if ($this->deletingUser)
             <flux:heading size="lg">Delete User</flux:heading>
             <flux:text class="mt-2">
@@ -364,7 +370,7 @@ new #[Title('User Management')] #[Layout('layouts::app')] class extends Componen
     </flux:modal>
 
     {{-- Bulk Delete Confirmation Modal --}}
-    <flux:modal wire:model="showBulkDeleteModal" name="bulk-delete-users" class="min-w-sm">
+    <flux:modal wire:model="showBulkDeleteModal" name="bulk-delete-users" class="max-w-lg">
         <flux:heading size="lg">Delete {{ count($this->selected) }} User{{ count($this->selected) > 1 ? 's' : '' }}</flux:heading>
         <flux:text class="mt-2">
             Are you sure you want to delete {{ count($this->selected) }} selected user{{ count($this->selected) > 1 ? 's' : '' }}?

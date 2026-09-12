@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\PreRegistration;
+use App\Models\Visit;
 use App\Models\Visitor;
 use Endroid\QrCode\Builder\Builder;
 use Endroid\QrCode\Encoding\Encoding;
@@ -13,7 +13,9 @@ Route::livewire('/', 'pages::welcome')->name('home');
 
 Route::livewire('pre-register', 'pages::pre-register')->name('pre-register');
 
-Route::livewire('pre-register/complete/{preRegistration}', 'pages::pre-register-complete')->name('pre-register.complete');
+Route::livewire('pre-register/complete/{booking}', 'pages::pre-register-complete')->name('pre-register.complete');
+
+Route::livewire('schedule-visit', 'pages::schedule-visit')->name('schedule-visit');
 
 Route::get('/locale/{locale}', function (string $locale) {
     if (in_array($locale, ['en', 'es', 'ph'])) {
@@ -29,8 +31,8 @@ Route::get('/qr/{token}', function (string $token) {
 
     if (Visitor::where('qr_code_token', $token)->exists()) {
         $data = route('home').'?checkout='.$token;
-    } elseif (PreRegistration::where('qr_code_token', $token)->exists()) {
-        $data = route('home').'?pre='.$token;
+    } elseif (Visit::scheduled()->where('qr_code_token', $token)->exists()) {
+        $data = route('home').'?booking='.$token;
     }
 
     abort_unless($data, 404);
@@ -52,8 +54,7 @@ Route::get('/qr/{token}', function (string $token) {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('dashboard', 'pages::dashboard')->name('dashboard');
     Route::livewire('visitors', 'pages::visitors')->name('visitors');
-    Route::livewire('pre-registrations', 'pages::pre-registrations')->name('pre-registrations');
-    Route::livewire('visitor-logs', 'pages::visitor-logs')->name('visitor-logs');
+    Route::livewire('visits', 'pages::visits')->name('visits');
     Route::livewire('users', 'pages::users')->name('users');
     Route::livewire('watchlist', 'pages::watchlist')->name('watchlist');
 });

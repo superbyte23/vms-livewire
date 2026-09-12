@@ -1,8 +1,7 @@
 <?php
 
-use App\Models\PreRegistration;
+use App\Models\Visit;
 use App\Models\Visitor;
-use App\Models\VisitorLog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -10,18 +9,19 @@ uses(RefreshDatabase::class);
 
 test('permanent qr token is generated on check-in', function () {
     Livewire::test('pages::welcome')
-        ->set('name', 'John Doe')
+        ->set('firstname', 'John')
+        ->set('lastname', 'Doe')
         ->set('purpose', 'Meeting')
         ->call('checkIn');
 
-    $this->assertDatabaseHas('visitor_logs', ['purpose' => 'Meeting']);
+    $this->assertDatabaseHas('visits', ['purpose' => 'Meeting']);
 
-    $log = VisitorLog::where('purpose', 'Meeting')->first();
-    $visitor = $log->visitor;
+    $visit = Visit::where('purpose', 'Meeting')->first();
+    $visitor = $visit->visitor;
 
     expect($visitor->qr_code_token)->not->toBeNull();
     expect(strlen($visitor->qr_code_token))->toBe(32);
-    expect($log->qr_code_token)->toBeNull();
+    expect($visit->qr_code_token)->toBeNull();
 });
 
 test('qr code route returns png image for valid token', function () {
@@ -35,12 +35,15 @@ test('qr code route returns png image for valid token', function () {
     $response->assertHeader('Content-Type', 'image/png');
 });
 
-test('qr code route returns png image for pre-registration token', function () {
-    PreRegistration::factory()->pending()->create([
-        'qr_code_token' => 'pre-token-123',
+test('qr code route returns png image for booking token', function () {
+    $visitor = Visitor::factory()->create();
+
+    Visit::factory()->scheduled()->create([
+        'visitor_id' => $visitor->id,
+        'qr_code_token' => 'book-token-123',
     ]);
 
-    $response = $this->get(route('qr.code', 'pre-token-123'));
+    $response = $this->get(route('qr.code', 'book-token-123'));
 
     $response->assertOk();
     $response->assertHeader('Content-Type', 'image/png');
@@ -55,7 +58,7 @@ test('visiting kiosk with checkout token shows confirmation', function () {
     $visitor = Visitor::factory()->create([
         'qr_code_token' => 'checkout-token-456',
     ]);
-    VisitorLog::factory()->create([
+    Visit::factory()->create([
         'visitor_id' => $visitor->id,
         'status' => 'checked_in',
     ]);
@@ -72,7 +75,7 @@ test('confirming qr checkout checks out the visitor', function () {
     $visitor = Visitor::factory()->create([
         'qr_code_token' => 'confirm-token',
     ]);
-    $log = VisitorLog::factory()->create([
+    $visit = Visit::factory()->create([
         'visitor_id' => $visitor->id,
         'status' => 'checked_in',
         'checked_in_at' => now(),
@@ -83,20 +86,20 @@ test('confirming qr checkout checks out the visitor', function () {
         ->assertSet('showQrCheckoutModal', true)
         ->call('confirmQrCheckOut');
 
-    $this->assertDatabaseHas('visitor_logs', [
-        'id' => $log->id,
+    $this->assertDatabaseHas('visits', [
+        'id' => $visit->id,
         'status' => 'checked_out',
     ]);
 
-    $log->refresh();
-    expect($log->checked_out_at)->not->toBeNull();
+    $visit->refresh();
+    expect($visit->checked_out_at)->not->toBeNull();
 });
 
 test('cancelling qr checkout does not check out the visitor', function () {
     $visitor = Visitor::factory()->create([
         'qr_code_token' => 'cancel-token',
     ]);
-    $log = VisitorLog::factory()->create([
+    $visit = Visit::factory()->create([
         'visitor_id' => $visitor->id,
         'status' => 'checked_in',
         'checked_in_at' => now(),
@@ -107,20 +110,20 @@ test('cancelling qr checkout does not check out the visitor', function () {
         ->assertSet('showQrCheckoutModal', true)
         ->call('cancelQrCheckOut');
 
-    $this->assertDatabaseHas('visitor_logs', [
-        'id' => $log->id,
+    $this->assertDatabaseHas('visits', [
+        'id' => $visit->id,
         'status' => 'checked_in',
     ]);
 
-    $log->refresh();
-    expect($log->checked_out_at)->toBeNull();
+    $visit->refresh();
+    expect($visit->checked_out_at)->toBeNull();
 });
 
 test('confirming invalid qr token does not check anyone out', function () {
     $visitor = Visitor::factory()->create([
         'qr_code_token' => 'real-token',
     ]);
-    $log = VisitorLog::factory()->create([
+    $visit = Visit::factory()->create([
         'visitor_id' => $visitor->id,
         'status' => 'checked_in',
         'checked_in_at' => now(),
@@ -130,8 +133,8 @@ test('confirming invalid qr token does not check anyone out', function () {
         ->call('checkOutByToken', 'fake-token')
         ->call('confirmQrCheckOut');
 
-    $this->assertDatabaseHas('visitor_logs', [
-        'id' => $log->id,
+    $this->assertDatabaseHas('visits', [
+        'id' => $visit->id,
         'status' => 'checked_in',
     ]);
 });
@@ -144,7 +147,7 @@ test('scanning a visitor badge qr at check-in selects the visitor', function () 
     Livewire::test('pages::welcome')
         ->call('selectVisitorByQrToken', 'badge-token-789')
         ->assertSet('selectedVisitorId', $visitor->id)
-        ->assertSet('selectedPreRegistrationId', null)
+        ->assertSet('selectedBookingId', null)
         ->assertSet('showPreQrScanner', false);
 });
 

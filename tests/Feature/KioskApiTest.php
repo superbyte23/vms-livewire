@@ -1,9 +1,8 @@
 <?php
 
-use App\Models\PreRegistration;
 use App\Models\User;
+use App\Models\Visit;
 use App\Models\Visitor;
-use App\Models\VisitorLog;
 use App\Notifications\VisitorCheckedIn;
 use App\Notifications\VisitorCheckedOut;
 use App\Notifications\VisitorFlagged;
@@ -42,8 +41,8 @@ test('health endpoint responds when authenticated', function () {
 });
 
 test('search visitors returns matching visitors only', function () {
-    Visitor::factory()->create(['name' => 'Alice Johnson']);
-    Visitor::factory()->create(['name' => 'Bob Smith']);
+    Visitor::factory()->create(['firstname' => 'Alice', 'lastname' => 'Johnson']);
+    Visitor::factory()->create(['firstname' => 'Bob', 'lastname' => 'Smith']);
 
     $response = kiosk('get', '/api/kiosk/visitors/search?q=alice');
 
@@ -54,16 +53,20 @@ test('search visitors returns matching visitors only', function () {
 
 test('store visitor creates a visitor with a qr token', function () {
     $response = kiosk('post', '/api/kiosk/visitors', [
-        'name' => 'Jane Roe',
+        'firstname' => 'Jane',
+        'lastname' => 'Roe',
         'email' => 'jane@example.com',
         'phone' => '555-0100',
         'company' => 'Acme',
-        'valid_id_number' => 'DL-123',
+        'government_id' => 'DL-123',
     ]);
 
     $response->assertCreated()
         ->assertJsonPath('visitor.name', 'Jane Roe')
-        ->assertJsonPath('visitor.email', 'jane@example.com');
+        ->assertJsonPath('visitor.firstname', 'Jane')
+        ->assertJsonPath('visitor.lastname', 'Roe')
+        ->assertJsonPath('visitor.email', 'jane@example.com')
+        ->assertJsonPath('visitor.government_id', 'DL-123');
 
     $visitor = Visitor::where('name', 'Jane Roe')->first();
 
@@ -72,59 +75,70 @@ test('store visitor creates a visitor with a qr token', function () {
         ->and(strlen($visitor->qr_code_token))->toBe(32);
 });
 
-test('show visitor by token returns active log when on-site', function () {
+test('show visitor by token returns active visit when on-site', function () {
     $visitor = Visitor::factory()->create(['qr_code_token' => 'tok-123']);
-    VisitorLog::factory()->create(['visitor_id' => $visitor->id, 'status' => 'checked_in']);
+    Visit::factory()->create(['visitor_id' => $visitor->id, 'status' => 'checked_in']);
 
     kiosk('get', '/api/kiosk/visitors/token/tok-123')
         ->assertOk()
         ->assertJsonPath('visitor.qr_code_token', 'tok-123')
-        ->assertJsonPath('log.status', 'checked_in');
+        ->assertJsonPath('visit.status', 'checked_in');
 });
 
-test('show visitor by token returns null log when not on-site', function () {
+test('show visitor by token returns null visit when not on-site', function () {
     Visitor::factory()->create(['qr_code_token' => 'tok-456']);
 
     kiosk('get', '/api/kiosk/visitors/token/tok-456')
         ->assertOk()
         ->assertJsonPath('visitor.qr_code_token', 'tok-456')
-        ->assertJsonPath('log', null);
+        ->assertJsonPath('visit', null);
 });
 
 test('show visitor by token returns 404 for unknown token', function () {
     kiosk('get', '/api/kiosk/visitors/token/nope')->assertNotFound();
 });
 
-test('pending pre-registrations are searchable', function () {
-    PreRegistration::factory()->pending()->create(['name' => 'Carlos Garcia']);
-    PreRegistration::factory()->used()->create(['name' => 'Dina Park']);
+test('pending bookings are searchable', function () {
+    $carlos = Visitor::factory()->create(['firstname' => 'Carlos', 'lastname' => 'Garcia']);
+    $dina = Visitor::factory()->create(['firstname' => 'Dina', 'lastname' => 'Park']);
+    Visit::factory()->scheduled()->create(['visitor_id' => $carlos->id]);
+    Visit::factory()->create(['visitor_id' => $dina->id, 'status' => 'checked_in']);
 
-    $response = kiosk('get', '/api/kiosk/pre-registrations/pending?q=carlos');
+    $response = kiosk('get', '/api/kiosk/bookings/pending?q=carlos');
 
     $response->assertOk()->assertJsonCount(1, 'data');
 });
 
-test('pre-registration by token returns the pending record', function () {
-    PreRegistration::factory()->pending()->create(['qr_code_token' => 'pre-tok-1']);
+test('booking by token returns the scheduled record', function () {
+    $visitor = Visitor::factory()->create();
+    Visit::factory()->scheduled()->create([
+        'visitor_id' => $visitor->id,
+        'qr_code_token' => 'book-tok-1',
+    ]);
 
-    kiosk('get', '/api/kiosk/pre-registrations/token/pre-tok-1')
+    kiosk('get', '/api/kiosk/bookings/token/book-tok-1')
         ->assertOk()
-        ->assertJsonPath('pre_registration.qr_code_token', null)
-        ->assertJsonPath('pre_registration.name', fn ($name) => is_string($name) && $name !== '');
+        ->assertJsonPath('booking.visitor_id', $visitor->id)
+        ->assertJsonPath('booking.status', 'scheduled');
 });
 
-test('pre-registration by token rejects used or unknown records', function () {
-    PreRegistration::factory()->used()->create(['qr_code_token' => 'used-tok']);
+test('booking by token rejects used or unknown records', function () {
+    $visitor = Visitor::factory()->create();
+    Visit::factory()->create([
+        'visitor_id' => $visitor->id,
+        'qr_code_token' => 'used-tok',
+        'status' => 'checked_in',
+    ]);
 
-    kiosk('get', '/api/kiosk/pre-registrations/token/used-tok')->assertNotFound();
-    kiosk('get', '/api/kiosk/pre-registrations/token/unknown')->assertNotFound();
+    kiosk('get', '/api/kiosk/bookings/token/used-tok')->assertNotFound();
+    kiosk('get', '/api/kiosk/bookings/token/unknown')->assertNotFound();
 });
 
 test('on-site returns only checked-in visitors', function () {
     $in = Visitor::factory()->create();
     $out = Visitor::factory()->create();
-    VisitorLog::factory()->create(['visitor_id' => $in->id, 'status' => 'checked_in']);
-    VisitorLog::factory()->checkedOut()->create(['visitor_id' => $out->id]);
+    Visit::factory()->create(['visitor_id' => $in->id, 'status' => 'checked_in']);
+    Visit::factory()->checkedOut()->create(['visitor_id' => $out->id]);
 
     $response = kiosk('get', '/api/kiosk/on-site');
 
@@ -146,15 +160,15 @@ test('check-in registers a new visitor and returns badge details', function () {
 
     $response->assertCreated()
         ->assertJsonPath('visitor.name', 'John Doe')
-        ->assertJsonPath('log.status', 'checked_in')
+        ->assertJsonPath('visit.status', 'checked_in')
         ->assertJsonPath('is_flagged', false)
         ->assertJsonPath('badge_number', fn ($badge) => str_starts_with($badge, 'V-'));
 
-    $log = VisitorLog::where('visitor_id', $response->json('visitor.id'))->first();
+    $visit = Visit::where('visitor_id', $response->json('visitor.id'))->first();
 
-    expect($log)->not->toBeNull()
-        ->and($log->host)->toBe($host->name)
-        ->and($log->badge_number)->toBe($response->json('badge_number'));
+    expect($visit)->not->toBeNull()
+        ->and($visit->host)->toBe($host->name)
+        ->and($visit->badge_number)->toBe($response->json('badge_number'));
 
     Notification::assertSentTo($host, VisitorCheckedIn::class);
 });
@@ -174,29 +188,30 @@ test('check-in with existing visitor reuses their qr token', function () {
     expect($visitor->qr_code_token)->toBe('existing-tok');
 });
 
-test('check-in consumes a pending pre-registration', function () {
-    $pre = PreRegistration::factory()->pending()->create(['qr_code_token' => 'pre-tok']);
-
-    $response = kiosk('post', '/api/kiosk/check-in', [
-        'pre_registration_id' => $pre->id,
-        'name' => $pre->name,
-        'email' => $pre->email,
-        'phone' => $pre->phone,
-        'company' => $pre->company,
-        'purpose' => $pre->purpose,
+test('check-in with a booking flips the booked visit to checked in', function () {
+    $visitor = Visitor::factory()->create();
+    $booking = Visit::factory()->scheduled()->create([
+        'visitor_id' => $visitor->id,
+        'purpose' => 'Booked meeting',
     ]);
 
-    $response->assertCreated();
+    $countBefore = Visit::count();
 
-    expect(PreRegistration::find($pre->id)->status)->toBe('used');
+    $response = kiosk('post', '/api/kiosk/check-in', [
+        'booking_id' => $booking->id,
+        'visitor_id' => $visitor->id,
+    ]);
 
-    $visitor = Visitor::where('name', $pre->name)->first();
+    $response->assertCreated()->assertJsonPath('visit.status', 'checked_in');
 
-    expect($visitor->qr_code_token)->toBe('pre-tok');
+    expect(Visit::count())->toBe($countBefore)
+        ->and($booking->fresh()->status)->toBe('checked_in')
+        ->and($booking->fresh()->checked_in_at)->not->toBeNull()
+        ->and($booking->fresh()->badge_number)->not->toBeNull();
 });
 
 test('check-in flags a visitor matching the watchlist', function () {
-    Visitor::factory()->flagged()->create(['name' => 'Susan Black']);
+    Visitor::factory()->flagged()->create(['firstname' => 'Susan', 'lastname' => 'Black']);
     $admin = User::factory()->create();
 
     $response = kiosk('post', '/api/kiosk/check-in', [
@@ -224,7 +239,7 @@ test('check-in requires a name when not referencing an existing visitor', functi
 test('check-out checks out a visitor by qr token', function () {
     $visitor = Visitor::factory()->create(['qr_code_token' => 'out-tok']);
     $host = User::factory()->create();
-    $log = VisitorLog::factory()->create([
+    $visit = Visit::factory()->create([
         'visitor_id' => $visitor->id,
         'host_user_id' => $host->id,
         'status' => 'checked_in',
@@ -232,16 +247,16 @@ test('check-out checks out a visitor by qr token', function () {
 
     $response = kiosk('post', '/api/kiosk/check-out', ['token' => 'out-tok']);
 
-    $response->assertOk()->assertJsonPath('log.status', 'checked_out');
+    $response->assertOk()->assertJsonPath('visit.status', 'checked_out');
 
-    expect($log->refresh()->checked_out_at)->not->toBeNull();
+    expect($visit->refresh()->checked_out_at)->not->toBeNull();
 
     Notification::assertSentTo($host, VisitorCheckedOut::class);
 });
 
 test('check-out accepts an optional checkout photo', function () {
     $visitor = Visitor::factory()->create(['qr_code_token' => 'photo-tok']);
-    $log = VisitorLog::factory()->create([
+    $visit = Visit::factory()->create([
         'visitor_id' => $visitor->id,
         'status' => 'checked_in',
     ]);
@@ -251,7 +266,7 @@ test('check-out accepts an optional checkout photo', function () {
         'checkout_photo' => 'data:image/jpeg;base64,abc123',
     ])->assertOk();
 
-    expect($log->refresh()->checkout_photo)->toBe('data:image/jpeg;base64,abc123');
+    expect($visit->refresh()->checkout_photo)->toBe('data:image/jpeg;base64,abc123');
 });
 
 test('check-out rejects a token for a visitor who is not on-site', function () {

@@ -16,7 +16,8 @@ test('host receives notification when a visitor checks in with a host selected',
     $host = User::factory()->create();
 
     Livewire::test('pages::welcome')
-        ->set('name', 'John Doe')
+        ->set('firstname', 'John')
+        ->set('lastname', 'Doe')
         ->set('email', 'john@example.com')
         ->set('phone', '555-0123')
         ->set('company', 'Acme Inc')
@@ -30,7 +31,8 @@ test('host receives notification when a visitor checks in with a host selected',
 
 test('no notification sent when visitor checks in without a host', function () {
     Livewire::test('pages::welcome')
-        ->set('name', 'Jane Doe')
+        ->set('firstname', 'Jane')
+        ->set('lastname', 'Doe')
         ->set('host', '')
         ->set('hostUserId', null)
         ->set('purpose', 'Delivery')
@@ -43,7 +45,8 @@ test('notification contains correct visitor details', function () {
     $host = User::factory()->create();
 
     Livewire::test('pages::welcome')
-        ->set('name', 'Alice Smith')
+        ->set('firstname', 'Alice')
+        ->set('lastname', 'Smith')
         ->set('email', 'alice@example.com')
         ->set('phone', '555-9999')
         ->set('company', 'Widget Co')
@@ -53,9 +56,9 @@ test('notification contains correct visitor details', function () {
         ->call('checkIn');
 
     Notification::assertSentTo($host, VisitorCheckedIn::class, function ($notification) {
-        expect($notification->visitorLog->visitor->name)->toBe('Alice Smith');
-        expect($notification->visitorLog->visitor->company)->toBe('Widget Co');
-        expect($notification->visitorLog->purpose)->toBe('Interview');
+        expect($notification->visit->visitor->name)->toBe('Alice Smith');
+        expect($notification->visit->visitor->company)->toBe('Widget Co');
+        expect($notification->visit->purpose)->toBe('Interview');
 
         return true;
     });

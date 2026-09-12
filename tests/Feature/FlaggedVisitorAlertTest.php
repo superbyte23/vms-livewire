@@ -14,10 +14,11 @@ beforeEach(function () {
 });
 
 test('flagged visitor check-in marks the visitor as flagged', function () {
-    Visitor::factory()->flagged()->create(['name' => 'John Doe']);
+    Visitor::factory()->flagged()->create(['firstname' => 'John', 'lastname' => 'Doe']);
 
     Livewire::test('pages::welcome')
-        ->set('name', 'John Doe')
+        ->set('firstname', 'John')
+        ->set('lastname', 'Doe')
         ->set('purpose', 'Meeting')
         ->call('checkIn');
 
@@ -30,10 +31,11 @@ test('flagged visitor check-in marks the visitor as flagged', function () {
 test('all users are notified when a flagged visitor checks in', function () {
     $admin = User::factory()->create();
     $user = User::factory()->create();
-    Visitor::factory()->flagged()->create(['name' => 'John Doe']);
+    Visitor::factory()->flagged()->create(['firstname' => 'John', 'lastname' => 'Doe']);
 
     Livewire::test('pages::welcome')
-        ->set('name', 'John Doe')
+        ->set('firstname', 'John')
+        ->set('lastname', 'Doe')
         ->set('purpose', 'Meeting')
         ->call('checkIn');
 
@@ -45,7 +47,8 @@ test('non-flagged visitor check-in does not send alert', function () {
     User::factory()->create();
 
     Livewire::test('pages::welcome')
-        ->set('name', 'Jane Doe')
+        ->set('firstname', 'Jane')
+        ->set('lastname', 'Doe')
         ->set('purpose', 'Delivery')
         ->call('checkIn');
 

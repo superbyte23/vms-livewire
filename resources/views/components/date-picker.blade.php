@@ -76,7 +76,7 @@
         this.viewYear++;
     },
     days() {
-        const start = (new Date(this.viewYear, this.viewMonth, 1).getDay() + 6) % 7;
+        const start = new Date(this.viewYear, this.viewMonth, 1).getDay();
         const total = new Date(this.viewYear, this.viewMonth + 1, 0).getDate();
         const min = this.minISO();
         const cells = [];
@@ -149,18 +149,20 @@
             </div>
             <div x-show="mode === 'days'">
                 <div class="mt-4 grid grid-cols-7 gap-1 text-center text-xs font-medium text-neutral-400 dark:text-neutral-500">
-                    <template x-for="w in ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']" :key="w">
+                    <template x-for="w in ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']" :key="w">
                         <span x-text="w" class="py-1"></span>
                     </template>
                 </div>
                 <div class="mt-1 grid grid-cols-7 gap-1">
                     <template x-for="(cell, i) in days()" :key="i">
-                        <div x-show="!cell.off" x-on:click="cell.disabled || select(cell.iso)"
-                            x-bind:class="selected === cell.iso
-                                ? 'bg-emerald-600 text-white shadow-sm'
-                                : (cell.today
-                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                                    : (cell.disabled ? 'text-neutral-300 dark:text-neutral-600' : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800'))"
+                        <div x-on:click="!cell.off && !cell.disabled && select(cell.iso)"
+                            x-bind:class="cell.off
+                                ? 'invisible pointer-events-none'
+                                : (selected === cell.iso
+                                    ? 'bg-emerald-600 text-white shadow-sm'
+                                    : (cell.today
+                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                                        : (cell.disabled ? 'text-neutral-300 dark:text-neutral-600' : 'text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800')))"
                             class="flex h-11 cursor-pointer items-center justify-center rounded-lg text-sm font-medium">
                             <span x-text="cell.day"></span>
                         </div>

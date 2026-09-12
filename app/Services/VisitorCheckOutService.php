@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\VisitorLog;
+use App\Models\Visit;
 use App\Notifications\VisitorCheckedOut;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
@@ -11,19 +11,19 @@ class VisitorCheckOutService
     /**
      * Mark a visitor log as checked out and notify the host.
      */
-    public function checkOut(VisitorLog $visitorLog, ?string $checkoutPhoto = null): VisitorLog
+    public function checkOut(Visit $visit, ?string $checkoutPhoto = null): Visit
     {
-        $visitorLog->update([
+        $visit->update([
             'status' => 'checked_out',
             'checked_out_at' => now(),
             'checkout_photo' => $checkoutPhoto ?: null,
         ]);
 
-        if ($visitorLog->host_user_id && $hostUser = $visitorLog->hostUser) {
-            $hostUser->notify(new VisitorCheckedOut($visitorLog));
+        if ($visit->host_user_id && $hostUser = $visit->hostUser) {
+            $hostUser->notify(new VisitorCheckedOut($visit));
         }
 
-        return $visitorLog->load('visitor');
+        return $visit->load('visitor');
     }
 
     /**
@@ -32,12 +32,12 @@ class VisitorCheckOutService
      * @throws ModelNotFoundException when the
      *                                token does not resolve to a visitor currently on-site.
      */
-    public function checkOutByToken(string $token, ?string $checkoutPhoto = null): VisitorLog
+    public function checkOutByToken(string $token, ?string $checkoutPhoto = null): Visit
     {
-        $log = (new VisitorCheckInService)->activeLogForToken($token);
+        $visit = (new VisitorCheckInService)->activeVisitForToken($token);
 
-        abort_unless($log, 422, __('Invalid QR code or visitor is not on-site.'));
+        abort_unless($visit, 422, __('Invalid QR code or visitor is not on-site.'));
 
-        return $this->checkOut($log, $checkoutPhoto);
+        return $this->checkOut($visit, $checkoutPhoto);
     }
 }

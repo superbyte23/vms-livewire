@@ -3,10 +3,9 @@
 namespace App\Http\Controllers\Api\Kiosk;
 
 use App\Http\Controllers\Controller;
-use App\Models\PreRegistration;
 use App\Models\User;
+use App\Models\Visit;
 use App\Models\Visitor;
-use App\Models\VisitorLog;
 use App\Services\VisitorCheckInService;
 use App\Services\VisitorCheckOutService;
 use Illuminate\Http\JsonResponse;
@@ -41,7 +40,7 @@ class KioskController extends Controller
 
         $visitors = $term === ''
             ? collect()
-            : Visitor::search($term)->withCount('logs')->orderBy('name')->limit(8)->get();
+            : Visitor::search($term)->withCount('visits')->orderBy('name')->limit(8)->get();
 
         return response()->json([
             'data' => $visitors->map(fn (Visitor $visitor) => $this->visitorArray($visitor))->values(),
@@ -51,20 +50,29 @@ class KioskController extends Controller
     public function storeVisitor(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'name' => 'required|string|max:255',
+            'firstname' => 'required|string|max:255',
+            'middlename' => 'nullable|string|max:255',
+            'lastname' => 'required|string|max:255',
             'email' => 'nullable|string|email|max:255',
             'phone' => 'nullable|string|max:255',
             'company' => 'nullable|string|max:255',
-            'valid_id_number' => 'nullable|string|max:255',
+            'address' => 'nullable|string|max:255',
+            'government_id' => 'nullable|string|max:255',
+            'government_id_photo' => 'nullable|string',
             'photo' => 'nullable|string',
         ]);
 
         $visitor = Visitor::create([
-            'name' => $data['name'],
+            'firstname' => $data['firstname'],
+            'middlename' => $data['middlename'] ?? null,
+            'lastname' => $data['lastname'],
+            'name' => Visitor::composeName($data['firstname'], $data['middlename'] ?? null, $data['lastname']),
             'email' => $data['email'] ?? null,
             'phone' => $data['phone'] ?? null,
             'company' => $data['company'] ?? null,
-            'valid_id_number' => $data['valid_id_number'] ?? null,
+            'address' => $data['address'] ?? null,
+            'government_id' => $data['government_id'] ?? null,
+            'government_id_photo' => $data['government_id_photo'] ?? null,
             'photo' => $data['photo'] ?? null,
             'qr_code_token' => Str::random(32),
         ]);
@@ -74,35 +82,35 @@ class KioskController extends Controller
 
     public function showVisitorByToken(string $token): JsonResponse
     {
-        $visitor = Visitor::withCount('logs')->where('qr_code_token', $token)->first();
+        $visitor = Visitor::withCount('visits')->where('qr_code_token', $token)->first();
 
         abort_unless($visitor, 404, 'Invalid QR token.');
 
-        $log = app(VisitorCheckInService::class)->activeLogForToken($token);
+        $visit = app(VisitorCheckInService::class)->activeVisitForToken($token);
 
         return response()->json([
             'visitor' => $this->visitorArray($visitor),
-            'log' => $log ? $this->logArray($log) : null,
+            'visit' => $visit ? $this->visitArray($visit) : null,
         ]);
     }
 
-    public function showPreRegistrationByToken(string $token): JsonResponse
+    public function showBookingByToken(string $token): JsonResponse
     {
-        $pre = PreRegistration::pending()->where('qr_code_token', $token)->first();
+        $booking = Visit::scheduled()->with('visitor')->where('qr_code_token', $token)->first();
 
-        abort_unless($pre, 404, 'Invalid or already used pre-registration QR code.');
+        abort_unless($booking, 404, 'Invalid or already used booking QR code.');
 
-        return response()->json(['pre_registration' => $this->preRegistrationArray($pre)]);
+        return response()->json(['booking' => $this->bookingArray($booking)]);
     }
 
-    public function pendingPreRegistrations(Request $request): JsonResponse
+    public function pendingBookings(Request $request): JsonResponse
     {
         $term = $request->string('q')->trim()->toString();
 
-        $query = PreRegistration::pending();
+        $query = Visit::scheduled()->with('visitor');
 
         if ($term !== '') {
-            $query->where(function ($builder) use ($term) {
+            $query->whereHas('visitor', function ($builder) use ($term) {
                 $builder->where('name', 'like', '%'.$term.'%')
                     ->orWhere('email', 'like', '%'.$term.'%')
                     ->orWhere('phone', 'like', '%'.$term.'%');
@@ -111,20 +119,20 @@ class KioskController extends Controller
 
         return response()->json([
             'data' => $query->orderByDesc('created_at')->limit(5)->get()
-                ->map(fn (PreRegistration $pre) => $this->preRegistrationArray($pre))
+                ->map(fn (Visit $booking) => $this->bookingArray($booking))
                 ->values(),
         ]);
     }
 
     public function onSite(): JsonResponse
     {
-        $logs = VisitorLog::with('visitor')
+        $visits = Visit::with('visitor')
             ->where('status', 'checked_in')
             ->orderByDesc('checked_in_at')
             ->get();
 
         return response()->json([
-            'data' => $logs->map(fn (VisitorLog $log) => $this->logArray($log))->values(),
+            'data' => $visits->map(fn (Visit $visit) => $this->visitArray($visit))->values(),
         ]);
     }
 
@@ -132,12 +140,17 @@ class KioskController extends Controller
     {
         $data = $request->validate([
             'visitor_id' => 'nullable|string|exists:visitors,id',
-            'pre_registration_id' => 'nullable|string|exists:pre_registrations,id',
-            'name' => 'required_without:visitor_id|string|max:255',
+            'booking_id' => 'nullable|string|exists:visits,id',
+            'name' => 'required_without_all:visitor_id,firstname|string|max:255',
+            'firstname' => 'required_without_all:visitor_id,name|string|max:255',
+            'middlename' => 'nullable|string|max:255',
+            'lastname' => 'required_without_all:visitor_id,name|string|max:255',
             'email' => 'nullable|string|email|max:255',
             'phone' => 'nullable|string|max:255',
             'company' => 'nullable|string|max:255',
-            'valid_id_number' => 'nullable|string|max:255',
+            'address' => 'nullable|string|max:255',
+            'government_id' => 'nullable|string|max:255',
+            'government_id_photo' => 'nullable|string',
             'photo' => 'nullable|string',
             'host' => 'nullable|string|max:255',
             'host_user_id' => 'nullable|integer|exists:users,id',
@@ -149,7 +162,7 @@ class KioskController extends Controller
 
         return response()->json([
             'visitor' => $this->visitorArray($result['visitor']),
-            'log' => $this->logArray($result['log']),
+            'visit' => $this->visitArray($result['visit']),
             'badge_number' => $result['badge_number'],
             'qr_url' => route('qr.code', $result['visitor']->qr_code_token),
             'qr_content' => route('home').'?checkout='.$result['visitor']->qr_code_token,
@@ -165,24 +178,29 @@ class KioskController extends Controller
             'checkout_photo' => 'nullable|string',
         ]);
 
-        $log = app(VisitorCheckOutService::class)->checkOutByToken($data['token'], $data['checkout_photo'] ?? null);
+        $visit = app(VisitorCheckOutService::class)->checkOutByToken($data['token'], $data['checkout_photo'] ?? null);
 
-        return response()->json(['log' => $this->logArray($log)]);
+        return response()->json(['visit' => $this->visitArray($visit)]);
     }
 
     private function visitorArray(Visitor $visitor): array
     {
-        $visitsCount = $visitor->relationLoaded('logs')
-            ? $visitor->logs->count()
-            : ($visitor->getAttribute('logs_count') ?? $visitor->logs()->count());
+        $visitsCount = $visitor->relationLoaded('visits')
+            ? $visitor->visits->count()
+            : ($visitor->getAttribute('visits_count') ?? $visitor->visits()->count());
 
         return [
             'id' => $visitor->id,
             'name' => $visitor->name,
+            'firstname' => $visitor->firstname,
+            'middlename' => $visitor->middlename,
+            'lastname' => $visitor->lastname,
             'email' => $visitor->email,
             'phone' => $visitor->phone,
             'company' => $visitor->company,
-            'valid_id_number' => $visitor->valid_id_number,
+            'address' => $visitor->address,
+            'government_id' => $visitor->government_id,
+            'government_id_photo' => $visitor->government_id_photo,
             'photo' => $visitor->photo,
             'is_flagged' => $visitor->is_flagged,
             'qr_code_token' => $visitor->qr_code_token,
@@ -191,37 +209,40 @@ class KioskController extends Controller
         ];
     }
 
-    private function preRegistrationArray(PreRegistration $pre): array
+    private function bookingArray(Visit $booking): array
     {
+        $booking->loadMissing('visitor');
+
         return [
-            'id' => $pre->id,
-            'name' => $pre->name,
-            'email' => $pre->email,
-            'phone' => $pre->phone,
-            'company' => $pre->company,
-            'host' => $pre->host,
-            'host_user_id' => $pre->host_user_id,
-            'purpose' => $pre->purpose,
-            'valid_id_photo' => $pre->valid_id_photo,
-            'status' => $pre->status,
+            'id' => $booking->id,
+            'visitor_id' => $booking->visitor_id,
+            'visitor' => $booking->visitor ? $this->visitorArray($booking->visitor) : null,
+            'host' => $booking->host,
+            'host_user_id' => $booking->host_user_id,
+            'purpose' => $booking->purpose,
+            'visit_type' => $booking->visit_type,
+            'expected_date' => $booking->expected_date?->toDateString(),
+            'status' => $booking->status,
         ];
     }
 
-    private function logArray(VisitorLog $log): array
+    private function visitArray(Visit $visit): array
     {
         return [
-            'id' => $log->id,
-            'visitor_id' => $log->visitor_id,
-            'host' => $log->host,
-            'host_user_id' => $log->host_user_id,
-            'purpose' => $log->purpose,
-            'photo' => $log->photo,
-            'checkout_photo' => $log->checkout_photo,
-            'badge_number' => $log->badge_number,
-            'status' => $log->status,
-            'checked_in_at' => $log->checked_in_at?->toIso8601String(),
-            'checked_out_at' => $log->checked_out_at?->toIso8601String(),
-            'visitor' => $log->relationLoaded('visitor') ? $this->visitorArray($log->visitor) : null,
+            'id' => $visit->id,
+            'visitor_id' => $visit->visitor_id,
+            'host' => $visit->host,
+            'host_user_id' => $visit->host_user_id,
+            'purpose' => $visit->purpose,
+            'visit_type' => $visit->visit_type,
+            'expected_date' => $visit->expected_date?->toDateString(),
+            'photo' => $visit->photo,
+            'checkout_photo' => $visit->checkout_photo,
+            'badge_number' => $visit->badge_number,
+            'status' => $visit->status,
+            'checked_in_at' => $visit->checked_in_at?->toIso8601String(),
+            'checked_out_at' => $visit->checked_out_at?->toIso8601String(),
+            'visitor' => $visit->relationLoaded('visitor') ? $this->visitorArray($visit->visitor) : null,
         ];
     }
 }

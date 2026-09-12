@@ -2,8 +2,8 @@
 
 namespace Database\Factories;
 
+use App\Models\Visit;
 use App\Models\Visitor;
-use App\Models\VisitorLog;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /** @extends Factory<Visitor> */
@@ -13,15 +13,40 @@ class VisitorFactory extends Factory
 
     public function definition(): array
     {
+        $firstname = fake()->firstName();
+        $lastname = fake()->lastName();
+
         return [
-            'name' => fake()->name(),
+            'name' => Visitor::composeName($firstname, null, $lastname),
+            'firstname' => $firstname,
+            'middlename' => null,
+            'lastname' => $lastname,
             'phone' => fake()->phoneNumber(),
             'email' => fake()->safeEmail(),
             'company' => fake()->company(),
-            'valid_id_number' => fake()->bothify('??-########'),
+            'address' => fake()->address(),
+            'government_id' => fake()->bothify('??-########'),
             'is_flagged' => false,
             'notes' => null,
         ];
+    }
+
+    public function configure(): static
+    {
+        // Keep rows coherent whichever style the caller uses: parts win when
+        // present, otherwise an explicit `name` is split into parts.
+        return $this->afterMaking(function (Visitor $visitor) {
+            $composed = Visitor::composeName($visitor->firstname, $visitor->middlename, $visitor->lastname);
+
+            if ($composed !== '') {
+                $visitor->name = $composed;
+            } elseif ($visitor->name) {
+                $split = Visitor::splitName($visitor->name);
+                $visitor->firstname = $split['firstname'];
+                $visitor->middlename = $split['middlename'];
+                $visitor->lastname = $split['lastname'];
+            }
+        });
     }
 
     public function flagged(): static
@@ -32,8 +57,36 @@ class VisitorFactory extends Factory
         ]);
     }
 
-    public function withLog(array $logAttributes = []): static
+    public function withFullName(string $name): static
     {
-        return $this->has(VisitorLog::factory()->state($logAttributes), 'logs');
+        $split = Visitor::splitName($name);
+
+        return $this->state([
+            'firstname' => $split['firstname'],
+            'middlename' => $split['middlename'],
+            'lastname' => $split['lastname'],
+            'name' => $name,
+        ]);
+    }
+
+    public function withMiddleName(?string $middlename = null): static
+    {
+        return $this->state(function (array $attributes) use ($middlename) {
+            $middlename ??= fake()->firstName();
+            $firstname = $attributes['firstname'] ?? fake()->firstName();
+            $lastname = $attributes['lastname'] ?? fake()->lastName();
+
+            return [
+                'firstname' => $firstname,
+                'middlename' => $middlename,
+                'lastname' => $lastname,
+                'name' => Visitor::composeName($firstname, $middlename, $lastname),
+            ];
+        });
+    }
+
+    public function withVisit(array $visitAttributes = []): static
+    {
+        return $this->has(Visit::factory()->state($visitAttributes), 'visits');
     }
 }

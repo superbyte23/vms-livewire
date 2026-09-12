@@ -1,5 +1,6 @@
 @props([
     'token' => '',
+    'title' => '',
     'name' => '',
     'company' => '',
     'purpose' => '',
@@ -86,13 +87,13 @@
                 }
             }
         }"
-        class="mx-auto inline-block"
+        class="mx-auto block w-fit"
     >
         {{-- Downloadable card (always light theme for clean export) --}}
         <div x-ref="card" class="w-full max-w-[320px] rounded-2xl border border-neutral-200 bg-white text-center text-neutral-900 shadow-sm">
             <div class="border-b border-neutral-100 px-6 py-4">
                 <p class="card-system text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">{{ config('app.name') }}</p>
-                <p class="card-title mt-1 text-lg font-bold">{{ __('Pre-Registration Pass') }}</p>
+                <p class="card-title mt-1 text-lg font-bold">{{ $title ?: __('Pre-Registration Pass') }}</p>
             </div>
 
             <div class="space-y-1 px-6 py-4">

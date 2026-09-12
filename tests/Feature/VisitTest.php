@@ -1,7 +1,7 @@
 <?php
 
+use App\Models\Visit;
 use App\Models\Visitor;
-use App\Models\VisitorLog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -9,81 +9,81 @@ uses(RefreshDatabase::class)->group('feature')->group('settings');
 
 test('change status toggles visitor status', function () {
     $visitor = Visitor::factory()->create();
-    $log = VisitorLog::factory()->create([
+    $visit = Visit::factory()->create([
         'visitor_id' => $visitor->id,
         'status' => 'checked_in',
         'checked_in_at' => now(),
     ]);
 
-    Livewire::test('pages::visitor-logs')
-        ->call('changeStatus', $log->id);
+    Livewire::test('pages::visits')
+        ->call('changeStatus', $visit->id);
 
-    $log->refresh();
+    $visit->refresh();
 
-    expect($log->status)->toBe('checked_out')
-        ->and($log->checked_out_at)->not->toBeNull();
+    expect($visit->status)->toBe('checked_out')
+        ->and($visit->checked_out_at)->not->toBeNull();
 });
 
 test('change status toggles back to checked in', function () {
     $visitor = Visitor::factory()->create();
-    $log = VisitorLog::factory()->create([
+    $visit = Visit::factory()->create([
         'visitor_id' => $visitor->id,
         'status' => 'checked_out',
         'checked_in_at' => now()->subHours(2),
         'checked_out_at' => now(),
     ]);
 
-    Livewire::test('pages::visitor-logs')
-        ->call('changeStatus', $log->id);
+    Livewire::test('pages::visits')
+        ->call('changeStatus', $visit->id);
 
-    $log->refresh();
+    $visit->refresh();
 
-    expect($log->status)->toBe('checked_in')
-        ->and($log->checked_out_at)->toBeNull();
+    expect($visit->status)->toBe('checked_in')
+        ->and($visit->checked_out_at)->toBeNull();
 });
 
 test('status badge updates after change status', function () {
     $visitor = Visitor::factory()->create();
-    $log = VisitorLog::factory()->create([
+    $visit = Visit::factory()->create([
         'visitor_id' => $visitor->id,
         'status' => 'checked_in',
         'checked_in_at' => now(),
     ]);
 
-    Livewire::test('pages::visitor-logs')
+    Livewire::test('pages::visits')
         ->assertSee('On-site')
-        ->call('changeStatus', $log->id)
+        ->call('changeStatus', $visit->id)
         ->assertSee('Checked Out');
 
-    $log->refresh();
+    $visit->refresh();
 
-    expect($log->status)->toBe('checked_out');
+    expect($visit->status)->toBe('checked_out');
 });
 
-test('delete visitor log soft-deletes the record', function () {
+test('delete visit soft-deletes the record', function () {
     $visitor = Visitor::factory()->create();
-    $log = VisitorLog::factory()->create([
+    $visit = Visit::factory()->create([
         'visitor_id' => $visitor->id,
     ]);
 
-    Livewire::test('pages::visitor-logs')
-        ->call('confirmDelete', $log->id)
+    Livewire::test('pages::visits')
+        ->call('confirmDelete', $visit->id)
         ->assertSet('showDeleteModal', true)
-        ->call('deleteLog');
+        ->call('deleteVisit');
 
-    expect(VisitorLog::find($log->id))->toBeNull();
+    expect(Visit::find($visit->id))->toBeNull();
 
-    $this->assertSoftDeleted($log);
+    $this->assertSoftDeleted($visit);
 });
 
-test('view visitor log opens the modal', function () {
+test('view visit opens the modal', function () {
     $visitor = Visitor::factory()->create();
-    $log = VisitorLog::factory()->create([
+    $visit = Visit::factory()->create([
         'visitor_id' => $visitor->id,
     ]);
 
-    Livewire::test('pages::visitor-logs')
-        ->call('viewLog', $log->id)
+    Livewire::test('pages::visits')
+        ->call('viewVisit', $visit->id)
         ->assertSet('showViewModal', true)
         ->assertSee($visitor->name);
 });
