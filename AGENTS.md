@@ -94,3 +94,47 @@ tests/
 ├── Feature/Settings/       # Profile + security tests
 └── Unit/                   # Basic unit test
 ```
+
+## Production (Octane + RoadRunner on `:8085`)
+
+- **RoadRunner v2025.1.15** (`./rr`) via Octane serves `0.0.0.0:8085`. Supervisor programs: `vms-roadrunner` (user `root`) + `vms-worker` (user `www-data`, `numprocs=2`, `queue:work redis`). Confs in `/etc/supervisor/conf.d/vms-{roadrunner,worker}.conf` (mirror `laravel-*`).
+- **`.env`:** `production`, `DEBUG=false`, `APP_URL=https://192.168.1.17:8085`, `OCTANE_SERVER=roadrunner`, `OCTANE_HTTPS=true`, `CACHE_PREFIX=vms_`. Backup: `.env.pre-octane.bak`. DB/Redis/queue hosts unchanged (`mysql vms:3306`, `redis:6379`).
+- **Reachability:** `https://127.0.0.1:8085` (Windows via WSL forwarding), `https://192.168.1.17:8085` (LAN/kiosk). Plain HTTP only on loopback `http://127.0.0.1:18085`: browser `GET`/`HEAD` requests 302-redirect to `https://<same-host>:8085` (`app/Http/Middleware/RedirectDebugHttpToHttps.php`, ports via `config/app.php` `https_port`/`http_debug_port` — port-gated, never scheme-gated, or `:8085` would loop behind RR TLS termination); `/up` and non-cacheable methods pass through for curl/health/API use. Asset hosts follow the request host, so LAN clients get correct URLs automatically.
+
+### Deploy / rebuild
+
+```bash
+composer install --no-interaction --prefer-dist --optimize-autoloader
+npm run build
+php artisan config:cache && php artisan route:cache && php artisan view:cache
+php artisan migrate --force
+sudo supervisorctl restart vms-roadrunner   # ~60s port-check delay, brief :8085 downtime
+sudo supervisorctl restart vms-worker:*
+```
+
+- Never run `composer test` in prod — its `config:clear` wipes the prod config cache. Run `./vendor/bin/pest` directly instead, then re-cache if needed.
+- `octane:status` / `octane:reload` report "not running" (stale `storage/logs/octane-server-state.json`, same as the `:8080` reference) — Supervisor is the source of truth; use `restart`.
+- Keep `storage/` + `bootstrap/cache/` owned `ser_john:www-data` with `g+w` (root-run workers write logs there).
+
+### Offline-install notes (GitHub unreachable from this box)
+
+- Octane stack was assembled from `/var/www/laravel` `vendor/` (16/19 exact versions); `rr` binary + `config/octane.php` copied; `vendor/bin/{rr,roadrunner-worker}` proxies restored manually.
+- `composer.lock` pins `google/protobuf v5.36.0`, `symfony/http-client v8.1.5`, `http-client-contracts v3.7.1` (installed) vs upstream `.1/.6/.3`. Original lock at `composer.lock.pre-offline-pin`. When online: `composer update google/protobuf symfony/http-client symfony/http-client-contracts`, then delete the backup.
+- Always pass `--no-interaction` to composer here, otherwise a network stall hangs on a token prompt / `git clone`.
+
+### Gotchas
+
+- Redis DB 0 is shared across apps, but key prefixes separate traffic (`visita-database-` from the `APP_NAME` slug + `CACHE_PREFIX=vms_`).
+- Tesseract binary missing → ID OCR 500s (pre-existing, not Octane-caused).
+- Queued closures defined via `tinker < stdin` can't serialize (no source file) — test queues with file-backed code or real `ShouldQueue` Notification classes.
+- A stale `:8010` listener exists from another distro — unrelated, leave alone.
+
+### HTTPS (RoadRunner native TLS, any-IP)
+
+- Still 100% Octane: same `vms-roadrunner` program, only `.rr.yaml` + env changed. RR 2025 schema is **`http.ssl`** (not `http.tls` — silently ignored): `http.ssl.address=0.0.0.0:8085` + `cert/key` → `.certs/rr-server.pem`.
+- Octane `--host/--port` still defines the plain-HTTP listener → set to loopback-only (`127.0.0.1:18085`) so `:8085` is TLS-only. Plaintext on `:8085` gets HTTP 400.
+- **DHCP-safe certs:** `.certs/gen-server-cert.sh` runs before every (re)start (Supervisor wraps the command; cert failure = fail-fast, no PHP boot). It signs with the stable CA (`ca.pem`/`ca-key.pem`, clients install `ca.pem` once) and covers all current WSL + Windows IPs (via `powershell.exe ipconfig` interop), `127.0.0.1`, `localhost`, hostname, `vms.local`. Override/add IPs via `EXTRA_IPS` at the top of the script. 825-day validity.
+- Key perms matter: `rr-server-key.pem` must be readable by the runner — script sets `root:www-data`/`640` when root, leaves owner files otherwise (ser_john is in `www-data`).
+- `OCTANE_HTTPS=true` only forces `https://` absolute URLs (QR/badge links) — it does NOT enable TLS by itself.
+- Verify: `curl -sk https://127.0.0.1:8085/login` → 200; `openssl s_client -connect 127.0.0.1:8085 -CAfile .certs/ca.pem` → `Verify return code: 0 (ok)`.
+- Phone/kiosk checklist: install `ca.pem` as trusted CA on each device, browse `https://192.168.1.17:8085` (or current LAN IP), confirm no warning + kiosk camera works (secure context required for `getUserMedia`).

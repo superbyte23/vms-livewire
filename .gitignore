@@ -13,6 +13,9 @@
 .env
 .env.backup
 .env.production
+*.bak
+/composer.lock.pre-offline-pin
+/rr
 .phpactor.json
 .phpunit.result.cache
 Homestead.json

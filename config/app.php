@@ -56,6 +56,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | HTTPS / Debug Listener Ports
+    |--------------------------------------------------------------------------
+    |
+    | RoadRunner terminates TLS and forwards plain HTTP to the workers, so
+    | the framework cannot tell the listeners apart by scheme. The
+    | RedirectDebugHttpToHttps middleware uses these ports to send browser
+    | traffic from the loopback debug listener over to public HTTPS.
+    |
+    */
+
+    'https_port' => env('HTTPS_PORT', 8085),
+
+    'http_debug_port' => env('HTTP_DEBUG_PORT', 18085),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

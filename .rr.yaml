@@ -1,0 +1,14 @@
+# RoadRunner base config. Octane's `octane:start` adds `-o` overrides on top
+# (http.address from --host/--port, worker pool, rpc, logs), so only static
+# bits live here.
+#
+# TLS (RR 2025 schema = `http.ssl`, NOT `http.tls`):
+# - public HTTPS on :8085, cert re-minted for all current IPs on every
+#   (re)start by .certs/gen-server-cert.sh (see vms-roadrunner command).
+# - plain HTTP stays on the Octane --host/--port listener (127.0.0.1:18085,
+#   loopback only) for local debugging / health checks.
+http:
+  ssl:
+    address: 0.0.0.0:8085
+    cert: /var/www/vms-livewire/.certs/rr-server.pem
+    key: /var/www/vms-livewire/.certs/rr-server-key.pem
